@@ -1,1 +1,2 @@
-# No dependencies needed for basic version
+# No external dependencies required
+# Using only Python standard library for maximum compatibility
