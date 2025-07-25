@@ -1,29 +1,17 @@
-from fastapi import FastAPI
-import os
-from datetime import datetime
+import json
 
-# Create the most minimal FastAPI app possible
-app = FastAPI(title="TerraformCoder AI API")
-
-@app.get("/")
-async def root():
+def handler(event, context):
+    """Ultra minimal handler for Vercel"""
     return {
-        "message": "Minimal API is working!",
-        "timestamp": datetime.utcnow().isoformat(),
-        "python_version": "3.9+",
-        "environment": "vercel"
+        'statusCode': 200,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        },
+        'body': json.dumps({
+            'message': 'Ultra minimal Python function working!',
+            'status': 'success'
+        })
     }
-
-@app.get("/test")
-async def test():
-    return {"status": "ok", "test": "passed"}
-
-@app.get("/env-test")
-async def env_test():
-    return {
-        "secret_key_exists": bool(os.getenv("SECRET_KEY")),
-        "openai_key_exists": bool(os.getenv("OPENAI_API_KEY"))
-    }
-
-# Export handler for Vercel
-handler = app
