@@ -9,6 +9,8 @@ import jwt
 import openai
 import re
 import json
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI(
     title="TerraformCoder AI API",
@@ -32,7 +34,10 @@ app.add_middleware(
 
 # Environment variables
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY not set. Set it in Vercel or a .env file")
 
 # Initialize OpenAI
 if OPENAI_API_KEY:
