@@ -9,14 +9,16 @@ import jwt
 import openai
 import re
 import json
-from dotenv import load_dotenv
-load_dotenv()
+
+# Remove dotenv - not needed on Vercel
+# from dotenv import load_dotenv
+# load_dotenv()
 
 app = FastAPI(
     title="TerraformCoder AI API",
     description="AI-powered Terraform code generator",
-    version="1.0.0",
-    root_path="/api"  # Important for Vercel
+    version="1.0.0"
+    # Remove root_path for now to test
 )
 
 # CORS - Allow frontend domains
@@ -24,23 +26,21 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3002",
-        "https://terraformcoder-ai.vercel.app",  # Update with your domain
+        "https://terraformcoder-ai.vercel.app",
         "https://terraformcoder-ai-v2.vercel.app",
-        "https://*.vercel.app"
+        "https://*.vercel.app",
+        "*"  # Temporarily allow all for testing
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Environment variables
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Environment variables - don't crash if missing
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY not set. Set it in Vercel or a .env file")
-
-# Initialize OpenAI
+# Initialize OpenAI only if key exists
 if OPENAI_API_KEY:
     openai.api_key = OPENAI_API_KEY
 
@@ -167,8 +167,7 @@ async def generate_terraform_with_ai(description: str, provider: str = "aws") ->
 def generate_fallback_terraform(description: str, provider: str) -> str:
     """Fallback terraform generation when AI is not available"""
     if "vpc" in description.lower():
-        return '''
-# VPC Configuration
+        return '''# VPC Configuration
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -195,11 +194,9 @@ variable "vpc_name" {
 # Outputs
 output "vpc_id" {
   value = aws_vpc.main.id
-}
-'''
+}'''
     elif "ec2" in description.lower() or "instance" in description.lower():
-        return '''
-# EC2 Instance
+        return '''# EC2 Instance
 resource "aws_instance" "main" {
   ami           = var.ami_id
   instance_type = var.instance_type
@@ -241,16 +238,11 @@ output "instance_id" {
 
 output "public_ip" {
   value = aws_instance.main.public_ip
-}
-'''
+}'''
     else:
-        return f'''
-# Generated Terraform configuration
+        return f'''# Generated Terraform configuration
 # Description: {description}
 # Provider: {provider}
-
-# This is a basic template
-# Please customize according to your needs
 
 terraform {{
   required_providers {{
@@ -274,13 +266,18 @@ variable "region" {{
 # Add your resources here
 # resource "{provider}_example" "main" {{
 #   # Configuration goes here
-# }}
-'''
+# }}'''
 
-# Routes - All with /api prefix for Vercel
+# Routes
 @app.get("/")
 async def root():
-    return {"message": "TerraformCoder AI API is running on Vercel!", "version": "1.0.0"}
+    return {
+        "message": "TerraformCoder AI API is running on Vercel!",
+        "version": "1.0.0",
+        "status": "healthy",
+        "openai_configured": bool(OPENAI_API_KEY),
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 @app.get("/health")
 async def health_check():
@@ -461,62 +458,5 @@ async def get_stats(current_user: str = Depends(verify_token)):
         "latest_project": user_projects[-1]["name"] if user_projects else None
     }
 
-
-
-# from fastapi import FastAPI, HTTPException, Depends, status
-# from fastapi.middleware.cors import CORSMiddleware
-# from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-# from pydantic import BaseModel
-# from typing import Optional, List
-# import os
-# from datetime import datetime, timedelta
-# import jwt
-# import openai
-# import re
-# import json
-
-# app = FastAPI(
-#     title="TerraformCoder AI API",
-#     description="AI-powered Terraform code generator",
-#     version="1.0.0"
-# )
-
-# # CORS - Allow your frontend domain
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=[
-#         "http://localhost:3000",
-#         "https://your-frontend-domain.vercel.app",  # Update this
-#         "https://*.vercel.app"
-#     ],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# # Environment variables from Vercel
-# SECRET_KEY = os.getenv("SECRET_KEY")
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# # Initialize OpenAI
-# openai.api_key = OPENAI_API_KEY
-
-# # Security
-# security = HTTPBearer()
-
-# # [Include all your Pydantic models and helper functions here]
-
-# # In-memory storage (will use database later)
-# users_db = {}
-# projects_db = {}
-# project_counter = 1
-
-# # [Include all your route handlers here]
-
-# # Vercel requires this handler
-# @app.get("/api")
-# async def root():
-#     return {"message": "TerraformCoder AI API is running on Vercel!"}
-
-# # Make sure all routes start with /api for Vercel
-# # Update all your existing routes to include /api prefix
+# CRITICAL: Export handler for Vercel
+handler = app
