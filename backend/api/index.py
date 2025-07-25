@@ -25,6 +25,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3002",
         "https://terraformcoder-ai.vercel.app",  # Update with your domain
+        "https://terraformcoder-ai-v2.vercel.app",
         "https://*.vercel.app"
     ],
     allow_credentials=True,
