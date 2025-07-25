@@ -1,326 +1,1001 @@
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-from mangum import Mangum # Import Mangum
+import json
 import os
-import json # For mock AI responses and data handling
+import re
+from http.server import BaseHTTPRequestHandler
+from urllib.parse import parse_qs, urlparse
+from datetime import datetime
+import hashlib
+import base64
 
-# --- FastAPI App Initialization ---
-app = FastAPI(
-    title="TerraformCoder AI API",
-    description="Generate, validate, and manage Terraform code with AI assistance.",
-    version="1.0.0"
-)
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.handle_request()
+    
+    def do_POST(self):
+        self.handle_request()
+    
+    def do_OPTIONS(self):
+        self.send_cors_headers()
+        self.end_headers()
+    
+    def send_cors_headers(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    
+    def handle_request(self):
+        try:
+            parsed_url = urlparse(self.path)
+            path = parsed_url.path
+            query_params = parse_qs(parsed_url.query)
+            
+            # Remove /api prefix if present
+            if path.startswith('/api'):
+                path = path[4:] or '/'
+            
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            
+            if path == '/' or path == '':
+                response = self.handle_root()
+            elif path == '/health':
+                response = self.handle_health()
+            elif path == '/templates':
+                response = self.handle_templates()
+            elif path == '/generate' and self.command == 'POST':
+                response = self.handle_generate()
+            elif path == '/validate':
+                response = self.handle_validate(query_params)
+            elif path == '/register' and self.command == 'POST':
+                response = self.handle_register()
+            elif path == '/login' and self.command == 'POST':
+                response = self.handle_login()
+            elif path == '/projects' and self.command == 'POST':
+                response = self.handle_save_project()
+            elif path == '/projects' and self.command == 'GET':
+                response = self.handle_get_projects()
+            elif path == '/stats':
+                response = self.handle_stats()
+            else:
+                response = {"error": "Endpoint not found", "path": path}
+            
+            self.wfile.write(json.dumps(response, indent=2).encode())
+            
+        except Exception as e:
+            error_response = {"error": f"Server error: {str(e)}"}
+            self.wfile.write(json.dumps(error_response).encode())
+    
+    def handle_root(self):
+        return {
+            "message": "TerraformCoder AI API",
+            "version": "2.0.0",
+            "status": "healthy",
+            "endpoints": {
+                "GET /api": "API information",
+                "GET /api/health": "Health check",
+                "GET /api/templates": "Get Terraform templates",
+                "POST /api/generate": "Generate Terraform code",
+                "GET /api/validate": "Validate Terraform code",
+                "POST /api/register": "Register user",
+                "POST /api/login": "User login",
+                "POST /api/projects": "Save project",
+                "GET /api/projects": "Get user projects",
+                "GET /api/stats": "Usage statistics"
+            },
+            "features": [
+                "AI-powered Terraform generation",
+                "Multi-cloud support (AWS, Azure, GCP)",
+                "Code validation and security checks",
+                "Template library",
+                "User authentication",
+                "Project management"
+            ]
+        }
+    
+    def handle_health(self):
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "2.0.0",
+            "uptime": "100%"
+        }
+    
+    def handle_templates(self):
+        templates = {
+            "aws": {
+                "vpc": {
+                    "name": "AWS VPC with Subnets",
+                    "description": "Creates VPC with public/private subnets and Internet Gateway",
+                    "code": '''resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true
+  enable_dns_support   = true
 
-# --- CORS Configuration ---
-# IMPORTANT: For production, replace "*" with your frontend's Vercel URL
-# e.g., origins=["https://your-frontend-app.vercel.app"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# --- Security (Mock/Placeholder) ---
-# In a real app, integrate with a proper auth provider (e.g., Auth0, Cognito, or a robust JWT library)
-security = HTTPBearer()
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    # This is a mock implementation. In production, you would validate the JWT token
-    # and retrieve user information from a database.
-    token = credentials.credentials
-    # For now, we'll just return a dummy user if a token is provided
-    if token == "mock_token": # A simple mock token for testing
-        return {"username": "testuser", "id": "123", "is_pro": True}
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-# --- AI Integration (Mock/Placeholder) ---
-# Replace with actual OpenAI or other LLM integration
-# For now, it will return hardcoded responses for demonstration
-def call_ai_model(prompt: str) -> str:
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if openai_api_key:
-        # Placeholder for actual OpenAI integration
-        # from openai import OpenAI
-        # client = OpenAI(api_key=openai_api_key)
-        # try:
-        #     response = client.chat.completions.create(
-        #         model="gpt-3.5-turbo",
-        #         messages=[{"role": "user", "content": prompt}]
-        #     )
-        #     return response.choices[0].message.content
-        # except Exception as e:
-        #     print(f"OpenAI API error: {e}")
-        #     return f"Error calling AI: {e}. Using fallback."
-        return generate_mock_terraform(prompt) # Use mock even if key exists, for simplicity now
-    else:
-        return generate_mock_terraform(prompt)
-
-def generate_mock_terraform(description: str) -> str:
-    description_lower = description.lower()
-    if "vpc with subnets" in description_lower:
-        return """resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
   tags = {
-    Name = "terraformcoder-ai-vpc"
+    Name = var.vpc_name
+  }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.vpc_name}-igw"
   }
 }
 
 resource "aws_subnet" "public" {
-  vpc_id     = aws_vpc.main.id
-  cidr_block = "10.0.1.0/24"
-  availability_zone = "us-east-1a" # Example AZ, customize as needed
+  count             = length(var.public_subnet_cidrs)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.public_subnet_cidrs[count.index]
+  availability_zone = var.availability_zones[count.index]
+
   map_public_ip_on_launch = true
+
   tags = {
-    Name = "terraformcoder-ai-public-subnet"
+    Name = "${var.vpc_name}-public-${count.index + 1}"
   }
 }
 
 resource "aws_subnet" "private" {
-  vpc_id     = aws_vpc.main.id
-  cidr_block = "10.0.2.0/24"
-  availability_zone = "us-east-1b" # Example AZ, customize as needed
-  tags = {
-    Name = "terraformcoder-ai-private-subnet"
-  }
-}"""
-    elif "ec2 instance" in description_lower or "web server" in description_lower:
-        return """resource "aws_instance" "web" {
-  ami           = "ami-0abcdef1234567890" # Replace with a valid AMI for your region
-  instance_type = "t2.micro"
-  key_name      = "my-key-pair" # Replace with your SSH key pair name
-  tags = {
-    Name = "terraformcoder-ai-web-server"
-  }
-}"""
-    elif "s3 bucket" in description_lower or "storage" in description_lower:
-        return """resource "aws_s3_bucket" "my_bucket" {
-  bucket = "terraformcoder-ai-my-unique-bucket-name" # Must be globally unique
-  acl    = "private"
+  count             = length(var.private_subnet_cidrs)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_cidrs[count.index]
+  availability_zone = var.availability_zones[count.index]
 
   tags = {
-    Name        = "My Terraform AI Bucket"
-    Environment = "Dev"
+    Name = "${var.vpc_name}-private-${count.index + 1}"
   }
-}"""
-    else:
-        return f"""# Terraform code for: {description}
-# No specific template found for this description.
-# Please refine your request or provide more details.
-
-# Example placeholder:
-resource "null_resource" "placeholder" {{
-  triggers = {{
-    "description" = "{description}"
-  }}
-}}"""
-
-# --- Data Models ---
-class GenerateRequest(BaseModel):
-    description: str
-    provider: str = "aws"
-    context: Optional[str] = None
-
-class CodeValidationResult(BaseModel):
-    is_valid: bool
-    warnings: List[str]
-    errors: List[str]
-    suggestions: List[str]
-    security_score: float
-
-class Project(BaseModel):
-    id: str
-    name: str
-    terraform_code: str
-    description: str
-    provider: str
-    created_at: str
-    updated_at: str
-    user_id: str # To link to a user
-
-# --- Mock Data Storage (Replace with a real database like PostgreSQL in production) ---
-mock_users_db = {} # username -> user_data
-mock_projects_db: Dict[str, Project] = {} # project_id -> Project data
-mock_stats = {
-    "total_generations": 0,
-    "successful_generations": 0,
-    "failed_generations": 0,
-    "top_providers": {"aws": 0, "azure": 0, "gcp": 0},
-    "popular_templates": {}
 }
 
-# --- Utility Functions ---
-def validate_terraform_code(code: str) -> CodeValidationResult:
-    warnings = []
-    errors = []
-    suggestions = []
-    security_score = 100.0 # Start with perfect score
+variable "vpc_name" {
+  description = "Name of the VPC"
+  type        = string
+  default     = "main"
+}
 
-    # Basic syntax check (very rudimentary, real validation would use `terraform validate`)
-    if "resource \"" not in code or "{" not in code or "}" not in code:
-        errors.append("Basic Terraform syntax might be incorrect. Missing 'resource', '{', or '}'.")
-        security_score -= 10
+variable "vpc_cidr" {
+  description = "CIDR block for VPC"
+  type        = string
+  default     = "10.0.0.0/16"
+}
 
-    # Security checks
-    if "0.0.0.0/0" in code and "security_group" in code.lower():
-        warnings.append("Security group allows all inbound traffic (0.0.0.0/0). Consider restricting CIDR blocks.")
-        security_score -= 20
-    if "acl = \"public-read\"" in code and "s3_bucket" in code.lower():
-        warnings.append("S3 bucket has public-read ACL. Ensure this is intentional and secured appropriately.")
-        security_score -= 15
-    if "password =" in code.lower() and "rds" in code.lower():
-        warnings.append("Hardcoded database password found. Use secrets management (e.g., AWS Secrets Manager, Vault).")
-        security_score -= 25
+variable "public_subnet_cidrs" {
+  description = "CIDR blocks for public subnets"
+  type        = list(string)
+  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+}
 
-    # Best practices
-    if "ami-" in code and not any(kw in code.lower() for kw in ["data \"aws_ami\"", "source_ami_filter"]):
-        suggestions.append("Consider using data sources to dynamically fetch AMIs instead of hardcoding.")
-        security_score -= 5
-    if "tags" not in code:
-        suggestions.append("Consider adding tags to your resources for better organization and cost tracking.")
-        security_score -= 5
+variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private subnets"
+  type        = list(string)
+  default     = ["10.0.3.0/24", "10.0.4.0/24"]
+}
 
-    if not warnings and not errors:
-        is_valid = True
-    else:
-        is_valid = False
+variable "availability_zones" {
+  description = "Availability zones"
+  type        = list(string)
+  default     = ["us-west-2a", "us-west-2b"]
+}'''
+                },
+                "ec2": {
+                    "name": "AWS EC2 Instance with Security Group",
+                    "description": "Creates EC2 instance with security group and key pair",
+                    "code": '''resource "aws_security_group" "web" {
+  name_prefix = "web-sg"
+  vpc_id      = var.vpc_id
 
-    return CodeValidationResult(
-        is_valid=is_valid,
-        warnings=warnings,
-        errors=errors,
-        suggestions=suggestions,
-        security_score=max(0.0, security_score) # Score cannot go below 0
-    )
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-# --- Endpoints ---
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to TerraformCoder AI! Access API at /api", "status": "healthy"}
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.ssh_cidr_blocks
+  }
 
-@app.get("/api")
-async def api_root():
-    return {"message": "TerraformCoder AI API is working!", "version": "1.0.0", "status": "healthy", "path": "/api"}
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-@app.post("/api/generate", response_model=Dict[str, str])
-async def generate_terraform(request: GenerateRequest, user: Dict[str, Any] = Depends(get_current_user)):
-    """
-    Generates Terraform code based on natural language description.
-    """
-    print(f"User '{user.get('username')}' requested: {request.description} for {request.provider}")
-    mock_stats["total_generations"] += 1
-    mock_stats["top_providers"][request.provider] = mock_stats["top_providers"].get(request.provider, 0) + 1
+  tags = {
+    Name = "${var.instance_name}-sg"
+  }
+}
 
-    prompt = f"Generate Terraform code for {request.description} using {request.provider}. Context: {request.context or 'None'}."
-    generated_code = call_ai_model(prompt)
+resource "aws_instance" "web" {
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
+  key_name              = var.key_name
+  vpc_security_group_ids = [aws_security_group.web.id]
+  subnet_id             = var.subnet_id
 
-    if generated_code:
-        mock_stats["successful_generations"] += 1
-        return {"terraform_code": generated_code}
-    else:
-        mock_stats["failed_generations"] += 1
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate Terraform code."
-        )
+  user_data = var.user_data
 
-@app.get("/api/templates", response_model=List[Dict[str, str]])
-async def get_templates():
-    """
-    Returns a list of available Terraform templates.
-    """
-    templates = [
-        {"name": "AWS VPC with Public/Private Subnets", "description": "Creates a standard AWS VPC with public and private subnets, internet gateway, and route tables.", "provider": "aws"},
-        {"name": "AWS EC2 Web Server", "description": "Deploys a basic EC2 instance configured as a web server with a security group.", "provider": "aws"},
-        {"name": "AWS S3 Private Bucket", "description": "Sets up a private S3 bucket for secure storage.", "provider": "aws"},
-        {"name": "Azure Resource Group & Virtual Network", "description": "Creates an Azure Resource Group and a Virtual Network.", "provider": "azure"},
-        {"name": "GCP Compute Engine Instance", "description": "Deploys a basic GCP Compute Engine VM instance.", "provider": "gcp"},
-    ]
-    for template in templates:
-        mock_stats["popular_templates"][template["name"]] = mock_stats["popular_templates"].get(template["name"], 0) + 0.1 # Simulate popularity
-    return templates
+  tags = {
+    Name = var.instance_name
+  }
+}
 
-@app.get("/api/validate", response_model=CodeValidationResult)
-async def validate_code(code: str):
-    """
-    Validates Terraform code for syntax, security, and best practices.
-    """
-    return validate_terraform_code(code)
+variable "vpc_id" {
+  description = "VPC ID where EC2 will be launched"
+  type        = string
+}
 
-@app.post("/api/projects", response_model=Project)
-async def create_project(project: Project, user: Dict[str, Any] = Depends(get_current_user)):
-    """
-    Saves a generated Terraform project.
-    """
-    project.id = f"proj_{len(mock_projects_db) + 1}" # Simple ID generation
-    project.created_at = datetime.now().isoformat()
-    project.updated_at = datetime.now().isoformat()
-    project.user_id = user["id"] # Link to the authenticated user
-    mock_projects_db[project.id] = project
-    return project
+variable "subnet_id" {
+  description = "Subnet ID where EC2 will be launched"
+  type        = string
+}
 
-@app.get("/api/projects/{project_id}", response_model=Project)
-async def get_project(project_id: str, user: Dict[str, Any] = Depends(get_current_user)):
-    """
-    Retrieves a saved Terraform project by ID.
-    """
-    project = mock_projects_db.get(project_id)
-    if not project or project.user_id != user["id"]: # Ensure user owns project
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found or unauthorized.")
-    return project
+variable "instance_name" {
+  description = "Name of the EC2 instance"
+  type        = string
+  default     = "web-server"
+}
 
-@app.get("/api/projects", response_model=List[Project])
-async def list_projects(user: Dict[str, Any] = Depends(get_current_user)):
-    """
-    Lists all projects for the authenticated user.
-    """
-    user_projects = [p for p in mock_projects_db.values() if p.user_id == user["id"]]
-    return user_projects
+variable "instance_type" {
+  description = "EC2 instance type"
+  type        = string
+  default     = "t3.micro"
+}
 
-@app.post("/api/register")
-async def register_user(user_data: Dict[str, str]):
-    """
-    Registers a new user (mock implementation).
-    """
-    username = user_data.get("username")
-    password = user_data.get("password")
-    if not username or not password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username and password are required.")
-    if username in mock_users_db:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists.")
-    mock_users_db[username] = {"username": username, "password": password, "id": f"user_{len(mock_users_db) + 1}"}
-    return {"message": "User registered successfully", "user_id": mock_users_db[username]["id"]}
+variable "ami_id" {
+  description = "AMI ID for the instance"
+  type        = string
+  default     = "ami-0c02fb55956c7d316"  # Amazon Linux 2
+}
 
-@app.post("/api/login")
-async def login_user(user_data: Dict[str, str]):
-    """
-    Logs in a user and returns a mock token.
-    """
-    username = user_data.get("username")
-    password = user_data.get("password")
-    user = mock_users_db.get(username)
-    if not user or user["password"] != password:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
-    # In a real app, generate a proper JWT
-    return {"message": "Login successful", "token": "mock_token", "user_id": user["id"]}
+variable "key_name" {
+  description = "Key pair name for SSH access"
+  type        = string
+}
 
-@app.get("/api/stats")
-async def get_app_stats(user: Dict[str, Any] = Depends(get_current_user)): # Example of protected route
-    """
-    Returns application usage statistics (mock data).
-    """
-    # For a real app, tailor stats based on user's role/permissions
-    return mock_stats
+variable "ssh_cidr_blocks" {
+  description = "CIDR blocks allowed for SSH access"
+  type        = list(string)
+  default     = ["10.0.0.0/16"]
+}
 
-# CRITICAL: Export handler for Vercel
-# This tells Vercel how to run your FastAPI application.
-handler = Mangum(app)
+variable "user_data" {
+  description = "User data script"
+  type        = string
+  default     = ""
+}'''
+                },
+                "rds": {
+                    "name": "AWS RDS MySQL Database",
+                    "description": "Creates RDS MySQL instance with subnet group",
+                    "code": '''resource "aws_db_subnet_group" "main" {
+  name       = "${var.db_name}-subnet-group"
+  subnet_ids = var.subnet_ids
+
+  tags = {
+    Name = "${var.db_name} DB subnet group"
+  }
+}
+
+resource "aws_security_group" "rds" {
+  name_prefix = "${var.db_name}-rds-sg"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = var.allowed_security_groups
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.db_name}-rds-sg"
+  }
+}
+
+resource "aws_db_instance" "main" {
+  identifier = var.db_name
+  
+  engine         = "mysql"
+  engine_version = var.mysql_version
+  instance_class = var.instance_class
+  
+  allocated_storage     = var.allocated_storage
+  max_allocated_storage = var.max_allocated_storage
+  storage_type          = "gp2"
+  storage_encrypted     = true
+  
+  db_name  = var.database_name
+  username = var.username
+  password = var.password
+  
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  
+  backup_retention_period = var.backup_retention_period
+  backup_window          = "03:00-04:00"
+  maintenance_window     = "sun:04:00-sun:05:00"
+  
+  skip_final_snapshot = true
+  deletion_protection = false
+
+  tags = {
+    Name = var.db_name
+  }
+}
+
+variable "db_name" {
+  description = "Name of the RDS instance"
+  type        = string
+}
+
+variable "vpc_id" {
+  description = "VPC ID where RDS will be created"
+  type        = string
+}
+
+variable "subnet_ids" {
+  description = "List of subnet IDs for DB subnet group"
+  type        = list(string)
+}
+
+variable "allowed_security_groups" {
+  description = "Security groups allowed to access RDS"
+  type        = list(string)
+}
+
+variable "mysql_version" {
+  description = "MySQL version"
+  type        = string
+  default     = "8.0"
+}
+
+variable "instance_class" {
+  description = "RDS instance class"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "allocated_storage" {
+  description = "Initial storage allocation"
+  type        = number
+  default     = 20
+}
+
+variable "max_allocated_storage" {
+  description = "Maximum storage allocation"
+  type        = number
+  default     = 100
+}
+
+variable "database_name" {
+  description = "Name of the database"
+  type        = string
+  default     = "myapp"
+}
+
+variable "username" {
+  description = "Database master username"
+  type        = string
+  default     = "admin"
+}
+
+variable "password" {
+  description = "Database master password"
+  type        = string
+  sensitive   = true
+}
+
+variable "backup_retention_period" {
+  description = "Backup retention period in days"
+  type        = number
+  default     = 7
+}'''
+                }
+            },
+            "azure": {
+                "resource_group": {
+                    "name": "Azure Resource Group with Virtual Network",
+                    "description": "Creates resource group and virtual network",
+                    "code": '''resource "azurerm_resource_group" "main" {
+  name     = var.resource_group_name
+  location = var.location
+
+  tags = var.tags
+}
+
+resource "azurerm_virtual_network" "main" {
+  name                = var.vnet_name
+  address_space       = var.address_space
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  tags = var.tags
+}
+
+resource "azurerm_subnet" "main" {
+  name                 = var.subnet_name
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = var.subnet_prefixes
+}
+
+variable "resource_group_name" {
+  description = "Name of the resource group"
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region"
+  type        = string
+  default     = "East US"
+}
+
+variable "vnet_name" {
+  description = "Name of the virtual network"
+  type        = string
+  default     = "main-vnet"
+}
+
+variable "address_space" {
+  description = "Address space for VNet"
+  type        = list(string)
+  default     = ["10.0.0.0/16"]
+}
+
+variable "subnet_name" {
+  description = "Name of the subnet"
+  type        = string
+  default     = "main-subnet"
+}
+
+variable "subnet_prefixes" {
+  description = "Address prefixes for subnet"
+  type        = list(string)
+  default     = ["10.0.1.0/24"]
+}
+
+variable "tags" {
+  description = "Tags to apply to resources"
+  type        = map(string)
+  default     = {}
+}'''
+                }
+            },
+            "gcp": {
+                "vpc": {
+                    "name": "GCP VPC Network with Subnets",
+                    "description": "Creates VPC network with custom subnets",
+                    "code": '''resource "google_compute_network" "main" {
+  name                    = var.network_name
+  auto_create_subnetworks = false
+  routing_mode           = "GLOBAL"
+}
+
+resource "google_compute_subnetwork" "main" {
+  count         = length(var.subnets)
+  name          = var.subnets[count.index].name
+  ip_cidr_range = var.subnets[count.index].cidr
+  region        = var.subnets[count.index].region
+  network       = google_compute_network.main.id
+
+  secondary_ip_range {
+    range_name    = "${var.subnets[count.index].name}-secondary"
+    ip_cidr_range = var.subnets[count.index].secondary_cidr
+  }
+}
+
+resource "google_compute_firewall" "allow_internal" {
+  name    = "${var.network_name}-allow-internal"
+  network = google_compute_network.main.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["0-65535"]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = ["0-65535"]
+  }
+
+  allow {
+    protocol = "icmp"
+  }
+
+  source_ranges = var.internal_cidrs
+}
+
+variable "network_name" {
+  description = "Name of the VPC network"
+  type        = string
+}
+
+variable "subnets" {
+  description = "List of subnets to create"
+  type = list(object({
+    name           = string
+    cidr           = string
+    region         = string
+    secondary_cidr = string
+  }))
+  default = [
+    {
+      name           = "main-subnet"
+      cidr           = "10.0.1.0/24"
+      region         = "us-central1"
+      secondary_cidr = "10.0.2.0/24"
+    }
+  ]
+}
+
+variable "internal_cidrs" {
+  description = "CIDR blocks for internal traffic"
+  type        = list(string)
+  default     = ["10.0.0.0/16"]
+}'''
+                }
+            }
+        }
+        
+        return {
+            "templates": templates,
+            "total_templates": sum(len(provider_templates) for provider_templates in templates.values()),
+            "providers": list(templates.keys())
+        }
+    
+    def handle_generate(self):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            description = data.get('description', '').lower()
+            provider = data.get('provider', 'aws').lower()
+            
+            # Simple AI-like generation based on keywords
+            generated_code = self.generate_terraform_code(description, provider)
+            validation_result = self.validate_terraform_code(generated_code)
+            
+            return {
+                "success": True,
+                "terraform_code": generated_code,
+                "provider": provider,
+                "description": data.get('description'),
+                "validation": validation_result,
+                "timestamp": datetime.now().isoformat(),
+                "generated_by": "TerraformCoder AI"
+            }
+            
+        except Exception as e:
+            return {"error": f"Generation failed: {str(e)}"}
+    
+    def generate_terraform_code(self, description, provider):
+        # Enhanced AI-like code generation
+        if 'vpc' in description and 'subnet' in description:
+            if provider == 'aws':
+                return '''# VPC with Public and Private Subnets
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name = "main-vpc"
+  }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "main-igw"
+  }
+}
+
+resource "aws_subnet" "public" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-west-2a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "public-subnet"
+  }
+}
+
+resource "aws_subnet" "private" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-west-2b"
+
+  tags = {
+    Name = "private-subnet"
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name = "public-rt"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}'''
+            
+        elif 'ec2' in description or 'server' in description:
+            return '''# EC2 Instance with Security Group
+resource "aws_security_group" "web" {
+  name_prefix = "web-sg"
+  description = "Security group for web server"
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "web-sg"
+  }
+}
+
+resource "aws_instance" "web" {
+  ami           = "ami-0c02fb55956c7d316"  # Amazon Linux 2
+  instance_type = "t3.micro"
+  
+  vpc_security_group_ids = [aws_security_group.web.id]
+  
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>Hello from Terraform!</h1>" > /var/www/html/index.html
+              EOF
+
+  tags = {
+    Name = "web-server"
+  }
+}
+
+output "instance_public_ip" {
+  value = aws_instance.web.public_ip
+}'''
+            
+        elif 'database' in description or 'rds' in description:
+            return '''# RDS MySQL Database
+resource "aws_db_subnet_group" "main" {
+  name       = "main-db-subnet-group"
+  subnet_ids = [aws_subnet.private1.id, aws_subnet.private2.id]
+
+  tags = {
+    Name = "Main DB subnet group"
+  }
+}
+
+resource "aws_security_group" "rds" {
+  name_prefix = "rds-sg"
+  description = "Security group for RDS database"
+
+  ingress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  tags = {
+    Name = "rds-sg"
+  }
+}
+
+resource "aws_db_instance" "main" {
+  identifier = "main-database"
+  
+  engine         = "mysql"
+  engine_version = "8.0"
+  instance_class = "db.t3.micro"
+  
+  allocated_storage     = 20
+  max_allocated_storage = 100
+  storage_type          = "gp2"
+  storage_encrypted     = true
+  
+  db_name  = "myapp"
+  username = "admin"
+  password = var.db_password  # Use variable for security
+  
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  
+  backup_retention_period = 7
+  backup_window          = "03:00-04:00"
+  maintenance_window     = "sun:04:00-sun:05:00"
+  
+  skip_final_snapshot = true
+
+  tags = {
+    Name = "main-database"
+  }
+}
+
+variable "db_password" {
+  description = "Database master password"
+  type        = string
+  sensitive   = true
+}'''
+        
+        else:
+            # Generic resource based on description
+            return f'''# Generated Terraform configuration for: {description}
+resource "aws_instance" "main" {{
+  ami           = "ami-0c02fb55956c7d316"
+  instance_type = "t3.micro"
+
+  tags = {{
+    Name = "generated-instance"
+    Description = "{description}"
+  }}
+}}
+
+output "instance_id" {{
+  value = aws_instance.main.id
+}}'''
+    
+    def validate_terraform_code(self, code):
+        issues = []
+        warnings = []
+        security_score = 100
+        
+        # Security checks
+        if '0.0.0.0/0' in code:
+            issues.append("Security: Open CIDR block (0.0.0.0/0) detected")
+            security_score -= 20
+            
+        if 'password = "' in code:
+            issues.append("Security: Hardcoded password detected")
+            security_score -= 30
+            
+        if 'secret' in code.lower() and '= "' in code:
+            issues.append("Security: Potential hardcoded secret")
+            security_score -= 25
+            
+        # Best practices
+        if 'tags = {' not in code:
+            warnings.append("Best Practice: Consider adding tags to resources")
+            security_score -= 5
+            
+        if 'variable ' not in code and len(code.split('\n')) > 10:
+            warnings.append("Best Practice: Consider using variables for reusability")
+            security_score -= 5
+            
+        # Syntax checks
+        if code.count('{') != code.count('}'):
+            issues.append("Syntax: Mismatched braces")
+            security_score -= 40
+            
+        return {
+            "valid": len(issues) == 0,
+            "issues": issues,
+            "warnings": warnings,
+            "security_score": max(0, security_score),
+            "recommendations": [
+                "Use variables for sensitive data",
+                "Implement least privilege access",
+                "Add appropriate tags for resource management",
+                "Use specific CIDR blocks instead of 0.0.0.0/0"
+            ]
+        }
+    
+    def handle_validate(self, query_params):
+        code = query_params.get('code', [''])[0]
+        if not code:
+            return {"error": "No code provided for validation"}
+        
+        validation_result = self.validate_terraform_code(code)
+        return {
+            "validation": validation_result,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def handle_register(self):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            username = data.get('username')
+            email = data.get('email')
+            password = data.get('password')
+            
+            if not all([username, email, password]):
+                return {"error": "Missing required fields"}
+            
+            # Mock user registration (in real app, save to database)
+            user_id = hashlib.md5(f"{username}{email}".encode()).hexdigest()[:8]
+            
+            return {
+                "success": True,
+                "message": "User registered successfully",
+                "user_id": user_id,
+                "username": username,
+                "email": email
+            }
+            
+        except Exception as e:
+            return {"error": f"Registration failed: {str(e)}"}
+    
+    def handle_login(self):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            username = data.get('username')
+            password = data.get('password')
+            
+            if not all([username, password]):
+                return {"error": "Missing credentials"}
+            
+            # Mock authentication (in real app, verify against database)
+            token = base64.b64encode(f"{username}:{datetime.now().isoformat()}".encode()).decode()
+            
+            return {
+                "success": True,
+                "message": "Login successful",
+                "token": token,
+                "username": username,
+                "expires_in": 3600
+            }
+            
+        except Exception as e:
+            return {"error": f"Login failed: {str(e)}"}
+    
+    def handle_save_project(self):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            project_name = data.get('name')
+            terraform_code = data.get('code')
+            description = data.get('description', '')
+            
+            if not all([project_name, terraform_code]):
+                return {"error": "Missing required project data"}
+            
+            project_id = hashlib.md5(f"{project_name}{datetime.now().isoformat()}".encode()).hexdigest()[:12]
+            
+            return {
+                "success": True,
+                "message": "Project saved successfully",
+                "project_id": project_id,
+                "name": project_name,
+                "saved_at": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {"error": f"Save failed: {str(e)}"}
+    
+    
+    def handle_get_projects(self):
+        # Mock project data (in real app, fetch from database)
+        projects = [
+            {
+                "id": "proj_001",
+                "name": "Web Application Infrastructure",
+                "description": "VPC with EC2 and RDS for web app",
+                "provider": "aws",
+                "created_at": "2024-01-15T10:30:00Z",
+                "last_modified": "2024-01-16T14:22:00Z",
+                "resources_count": 8
+            },
+            {
+                "id": "proj_002", 
+                "name": "Database Setup",
+                "description": "MySQL RDS with security groups",
+                "provider": "aws",
+                "created_at": "2024-01-14T09:15:00Z",
+                "last_modified": "2024-01-14T09:15:00Z",
+                "resources_count": 3
+            },
+            {
+                "id": "proj_003",
+                "name": "Azure Resource Group",
+                "description": "Basic Azure infrastructure setup",
+                "provider": "azure",
+                "created_at": "2024-01-13T16:45:00Z",
+                "last_modified": "2024-01-13T17:20:00Z",
+                "resources_count": 5
+            }
+        ]
+        
+        return {
+            "projects": projects,
+            "total_count": len(projects),
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def handle_stats(self):
+        return {
+            "api_stats": {
+                "total_generations": 1247,
+                "successful_generations": 1198,
+                "failed_generations": 49,
+                "success_rate": "96.1%"
+            },
+            "popular_resources": [
+                {"name": "aws_vpc", "count": 342},
+                {"name": "aws_instance", "count": 289},
+                {"name": "aws_security_group", "count": 267},
+                {"name": "aws_subnet", "count": 234},
+                {"name": "aws_db_instance", "count": 156}
+            ],
+            "provider_usage": {
+                "aws": 78.2,
+                "azure": 15.3,
+                "gcp": 6.5
+            },
+            "users": {
+                "total_registered": 342,
+                "active_this_month": 127,
+                "projects_created": 892
+            },
+            "uptime": "99.9%",
+            "avg_response_time": "245ms",
+            "timestamp": datetime.now().isoformat()
+        }
