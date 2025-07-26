@@ -27,7 +27,7 @@ app = FastAPI(
 # --- CORS Configuration ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://terraformcoder-ai.vercel.app"], # Adjust this in production to your frontend URL, e.g., "https://terraformcoder-ai.vercel.app"
+    allow_origins=["*"], # Adjust this in production to your frontend URL, e.g., "https://terraformcoder-ai.vercel.app"
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
