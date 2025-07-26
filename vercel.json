@@ -1,18 +1,15 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "builds": [
     {
       "src": "backend/api/index.py",
       "use": "@vercel/python",
-      "config": { "maxLambdaSize": "15mb", "runtime": "python3.12" }
+      "config": {
+        "installCommand": "pip install -r requirements.txt"
+      }
     }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "backend/api/index.py"
-    },
     {
       "src": "/(.*)",
       "dest": "backend/api/index.py"
