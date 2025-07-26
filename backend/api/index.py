@@ -27,7 +27,7 @@ app = FastAPI(
 # --- CORS Configuration ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Adjust this in production to your frontend URL, e.g., "https://terraformcoder-ai.vercel.app"
+    allow_origins=["https://terraformcoder-ai.vercel.app"], # Adjust this in production to your frontend URL, e.g., "https://terraformcoder-ai.vercel.app"
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,7 +38,7 @@ security = HTTPBearer()
 
 # IMPORTANT: Set this as an environment variable in Vercel for production!
 # Example: export JWT_SECRET_KEY="your-super-secret-key-that-is-long-and-random"
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-insecure-dev-secret-key") # Change this for production!
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "Srtm#356") # Change this for production!
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
