@@ -2,6 +2,6 @@ fastapi
 uvicorn
 mangum
 pydantic
-openai>=1.14.0 # Using a more recent version of OpenAI
+openai>=1.14.0
 PyJWT==2.8.0
-httpx>=0.27.0  # Explicitly adding httpx with a recent version
+httpx>=0.27.0
