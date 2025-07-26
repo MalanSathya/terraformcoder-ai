@@ -5,11 +5,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-# You can list your main packages here, but requirements.txt is also read by Vercel.
-# It's primarily for the python_version specification.
-# fastapi = "*"
-# mangum = "*"
-# python-jose = {extras = ["cryptography"], version = "*"}
 
 [requires]
 python_version = "3.12"
