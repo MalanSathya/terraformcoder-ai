@@ -20,13 +20,11 @@ app = FastAPI(
 )
 
 # --- CORS Configuration ---
-# IMPORTANT: For production, replace "*" with your frontend's Vercel URL
-# e.g., origins=["https://your-frontend-app.vercel.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://terraformcoder-ai.vercel.app"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"], # Explicitly allow methods
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -35,7 +33,7 @@ security = HTTPBearer()
 
 # Mock user data (for demonstration only, not persistent)
 mock_users_db = {}
-mock_projects_db = {} # Stores Project objects
+mock_projects_db = {}
 mock_stats = {
     "total_generations": 0,
     "successful_generations": 0,
@@ -46,15 +44,9 @@ mock_stats = {
 
 # --- Mock Authentication Dependency ---
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    # This is a mock implementation. In production, you would validate the JWT token
-    # and retrieve user information from a database.
     token = credentials.credentials
-    # For now, we'll just return a dummy user if a token exists
-    # A more robust mock would check against registered users, but for now, assume valid if token is present
     if token.startswith("mock_token_"):
         user_id = token.replace("mock_token_", "")
-        # In a real app, look up user by user_id
-        # For this mock, just return some user info
         return {"username": f"user_{user_id}", "id": user_id, "is_pro": True}
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -63,9 +55,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     )
 
 # --- AI Integration (Mock/Placeholder) ---
-# This function will mimic your existing generate_terraform logic
 def call_ai_model(description: str, provider: str = "aws") -> str:
-    # Use the same logic as your BaseHTTPRequestHandler's generate_terraform
     description_lower = description.lower()
 
     if 'vpc' in description_lower or 'network' in description_lower:
@@ -398,7 +388,6 @@ output "rds_port" {
   value       = aws_db_instance.main.port
 }'''
     else:
-        # Default/fallback template
         return f'''# Basic {provider} Configuration
 terraform {{
   required_providers {{
@@ -474,8 +463,6 @@ class ProjectCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
     terraform_code: str
-    # Assuming provider from generate step, can add to model if needed for saving
-    # provider: str = "aws" 
 
 class ProjectResponse(BaseModel):
     id: str
@@ -484,10 +471,8 @@ class ProjectResponse(BaseModel):
     terraform_code: str
     created_at: str
     updated_at: str
-    # Add user_id if needed for frontend
 
-# --- Utility Functions (FastAPI friendly) ---
-
+# --- Utility Functions ---
 def validate_terraform_code_logic(code: str) -> CodeValidationResult:
     """Validate Terraform code and provide suggestions"""
     if not code.strip():
@@ -533,19 +518,17 @@ def validate_terraform_code_logic(code: str) -> CodeValidationResult:
     if code.count('resource') > 3 and 'module' not in code:
         suggestions.append('💡 Consider organizing resources into modules for better maintainability')
     
-    # Combine issues and warnings
     all_issues = issues + warnings
     
     return CodeValidationResult(
-        valid=len(issues) == 0,  # Only hard issues make it invalid
+        valid=len(issues) == 0,
         issues=all_issues,
-        suggestions=suggestions[:5],  # Limit suggestions
+        suggestions=suggestions[:5],
         security_score=max(0.0, 100 - len(warnings) * 20),
         best_practices_score=max(0.0, 100 - len([s for s in suggestions if '💡' in s]) * 15)
     )
 
 # --- Endpoints ---
-
 @app.get("/")
 async def root():
     return {"message": "Welcome to TerraformCoder AI! Access API at /api", "status": "healthy"}
@@ -622,10 +605,10 @@ async def validate_code_endpoint(code: str):
 async def get_app_stats():
     """Returns application usage statistics (mock data)."""
     return {
-        'total_users': len(mock_users_db),  # More accurate mock
+        'total_users': len(mock_users_db),
         'total_projects': len(mock_projects_db),
         'ai_enabled': bool(os.getenv('OPENAI_API_KEY')),
-        'popular_templates': ['vpc-basic', 'ec2-basic'], # Simplified for mock
+        'popular_templates': ['vpc-basic', 'ec2-basic'],
         'timestamp': datetime.utcnow().isoformat()
     }
 
@@ -634,7 +617,6 @@ async def generate_terraform_endpoint(request: GenerateRequest, current_user: Di
     """Generates Terraform code based on natural language description."""
     generated_code = call_ai_model(request.description, request.provider)
     
-    # This part mimics your old generate_terraform's return structure
     explanation = ""
     resources = []
     description_lower = request.description.lower()
@@ -655,11 +637,10 @@ async def generate_terraform_endpoint(request: GenerateRequest, current_user: Di
         code=generated_code,
         explanation=explanation,
         resources=resources,
-        estimated_cost='Cost estimation available in Pro version', # Mock
+        estimated_cost='Cost estimation available in Pro version',
         provider=request.provider,
         generated_at=datetime.utcnow().isoformat()
     )
-
 
 @app.post("/api/auth/register", response_model=AuthResponse)
 async def register_user_endpoint(request: RegisterUserRequest):
@@ -672,8 +653,8 @@ async def register_user_endpoint(request: RegisterUserRequest):
         'id': user_id,
         'email': request.email,
         'name': request.name,
-        'password_hash': hashlib.sha256(request.password.encode()).hexdigest(), # Hash password (mock)
-        'access_token': f'mock_token_{user_id}' # Store mock token for easy retrieval
+        'password_hash': hashlib.sha256(request.password.encode()).hexdigest(),
+        'access_token': f'mock_token_{user_id}'
     }
     
     return AuthResponse(
@@ -708,11 +689,17 @@ async def create_project_endpoint(request: ProjectCreateRequest, current_user: D
         terraform_code=request.terraform_code,
         created_at=datetime.utcnow().isoformat(),
         updated_at=datetime.utcnow().isoformat(),
-        # user_id is implicit via current_user, but we could add it to the model if needed
     )
     mock_projects_db[project_id] = project
     return project
 
-# CRITICAL: Export handler for Vercel
-# This tells Vercel how to run your FastAPI application.
+# Create the handler for Vercel
 handler = Mangum(app)
+
+# For backwards compatibility, also export the app directly
+# This ensures Vercel can find the ASGI application regardless of detection method
+def application(scope, receive, send):
+    return handler(scope, receive, send)
+
+# Also provide the handler as 'handler' for explicit access
+__all__ = ['app', 'handler', 'application']
