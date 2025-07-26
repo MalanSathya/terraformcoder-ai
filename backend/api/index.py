@@ -1,26 +1,21 @@
-# api/index.py
+# backend/api/index.py
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from mangum import Mangum
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
 import os
 import json
+from datetime import datetime, timedelta
 import base64
 import hashlib
-import openai
 
-# --- Configuration ---
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "Srtm#356")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-# Initialize OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# --- OpenAI and JWT Imports ---
+from openai import OpenAI
+import jwt
+from jwt.exceptions import PyJWTError
 
 # --- FastAPI App Initialization ---
 app = FastAPI(
@@ -32,340 +27,174 @@ app = FastAPI(
 # --- CORS Configuration ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this more restrictively in production
+    allow_origins=["*"], # Adjust this in production to your frontend URL, e.g., "https://terraformcoder-ai.vercel.app"
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Security ---
+# --- Security Configuration ---
 security = HTTPBearer()
 
-# Mock data stores (in production, use a proper database)
+# IMPORTANT: Set this as an environment variable in Vercel for production!
+# Example: export JWT_SECRET_KEY="your-super-secret-key-that-is-long-and-random"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-insecure-dev-secret-key") # Change this for production!
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+# Mock user data (for demonstration only, not persistent; will be replaced by a database in a real app)
 mock_users_db = {}
 mock_projects_db = {}
+mock_stats = {
+    "total_generations": 0,
+    "successful_generations": 0,
+    "failed_generations": 0,
+    "top_providers": {"aws": 0, "azure": 0, "gcp": 0},
+    "popular_templates": {}
+}
 
-# --- Authentication ---
+# --- OpenAI Client Initialization ---
+# Ensure OPENAI_API_KEY is set in your Vercel environment variables
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# --- Helper function for JWT creation ---
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.utcnow() + timedelta(minutes=15) # Default expiry
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+# --- Authentication Dependency with PyJWT ---
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    token = credentials.credentials
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        # In production, you'd fetch user from database
-        user_data = mock_users_db.get(username)
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub") # 'sub' is standard for subject
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # In a real app, you would fetch user data from a DB using user_id
+        user_data = mock_users_db.get(user_id)
         if user_data is None:
-            raise credentials_exception
-        return user_data
-    except JWTError:
-        raise credentials_exception
-
-# --- AI Integration ---
-async def call_openai_for_terraform(description: str, provider: str = "aws") -> Dict[str, Any]:
-    """Generate Terraform code using OpenAI GPT"""
-    if not openai.api_key:
-        # Fallback to mock implementation if no API key
-        return {
-            "code": call_ai_model_fallback(description, provider),
-            "explanation": f"Generated basic {provider} configuration (using fallback - no OpenAI key configured)",
-            "resources": ["basic_configuration"]
-        }
-    
-    try:
-        # Create a detailed prompt for OpenAI
-        prompt = f"""You are a Terraform expert. Generate clean, production-ready Terraform code for the following requirement:
-
-Description: {description}
-Cloud Provider: {provider}
-
-Please generate:
-1. Terraform configuration with proper resource definitions
-2. Necessary variables with descriptions and defaults
-3. Outputs for important resource attributes
-4. Proper tags and naming conventions
-5. Security best practices
-
-Requirements:
-- Use latest Terraform syntax
-- Include provider configuration
-- Add comprehensive variables
-- Include meaningful outputs
-- Follow {provider} best practices
-- Add security considerations
-
-Respond with only the Terraform code, no explanations outside the code comments."""
-
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert Terraform engineer who writes clean, secure, and well-documented infrastructure as code."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=2000,
-            temperature=0.3
+             raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return {"username": user_data['name'], "id": user_id, "is_pro": True} # Mimic your old mock user structure
+    except PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        
-        generated_code = response.choices[0].message.content.strip()
-        
-        # Analyze the generated code to extract resources
-        resources = []
-        for line in generated_code.split('\n'):
-            if line.strip().startswith('resource "'):
-                resource_type = line.split('"')[1]
-                resources.append(resource_type)
-        
-        # Generate explanation based on content
-        explanation = f"Generated {provider} infrastructure with {len(resources)} resource types using OpenAI GPT-3.5-turbo"
-        
+
+# --- AI Integration (Actual OpenAI Call) ---
+async def call_ai_model(description: str, provider: str = "aws") -> Dict[str, Any]:
+    if not openai_client.api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OpenAI API key not configured."
+        )
+
+    system_prompt = f"""You are an expert in Terraform code generation.
+Generate ONLY the Terraform (.tf) code based on the user's request.
+Follow these guidelines:
+1. Generate complete, valid, and production-ready Terraform code for the requested cloud {provider}.
+2. Include necessary providers, resources, variables, and outputs.
+3. Add comments to explain complex parts.
+4. Avoid any conversational text, explanations, or extraneous information outside of the Terraform code block itself.
+5. If the request implies sensitive data (like passwords), use `variable` blocks and mark them `sensitive = true`.
+6. For the given description, provide also a concise explanation of the generated code, list the main resources created, and an estimated cost (e.g., "Free Tier Eligible", "Low", "Medium", "High"). This metadata should be provided as a JSON object after the Terraform code, within a markdown code block, so it can be parsed by the application.
+
+Example Format:
+```terraform
+# Your Terraform code here
+resource "aws_vpc" "example" {{ ... }}
+```json
+{{
+  "explanation": "This code creates an AWS VPC.",
+  "resources": ["aws_vpc"],
+  "estimated_cost": "Low"
+}}
+```
+"""
+    user_message = f"Generate Terraform code for {provider} to {description}."
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o", # Or "gpt-3.5-turbo", "gpt-4-turbo" depending on your needs and budget
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            temperature=0.7, # Adjust creativity
+            max_tokens=2048 # Adjust as needed for code length
+        )
+
+        full_response_content = response.choices[0].message.content.strip()
+
+        # Parse the response to separate code and metadata
+        code_start_tag = "```terraform"
+        code_end_tag = "```"
+        json_start_tag = "```json"
+
+        code_block = ""
+        metadata_block = "{}"
+
+        parts = full_response_content.split(code_start_tag)
+        if len(parts) > 1:
+            code_and_rest = parts[1].split(code_end_tag, 1)
+            code_block = code_and_rest[0].strip()
+
+            if len(code_and_rest) > 1:
+                # Check for JSON block
+                json_parts = code_and_rest[1].split(json_start_tag, 1)
+                if len(json_parts) > 1:
+                    metadata_and_end = json_parts[1].split(code_end_tag, 1)
+                    metadata_block = metadata_and_end[0].strip()
+        else:
+            # Fallback if AI doesn't use expected format strictly, try to find code/json blocks
+            if code_start_tag in full_response_content:
+                 code_block = full_response_content.split(code_start_tag, 1)[1].split(code_end_tag, 1)[0].strip()
+            if json_start_tag in full_response_content:
+                metadata_block = full_response_content.split(json_start_tag, 1)[1].split(code_end_tag, 1)[0].strip()
+
+
+        # Attempt to parse metadata JSON
+        try:
+            parsed_metadata = json.loads(metadata_block)
+            explanation = parsed_metadata.get("explanation", "No explanation provided by AI.")
+            resources = parsed_metadata.get("resources", [])
+            estimated_cost = parsed_metadata.get("estimated_cost", "Not estimated by AI.")
+        except json.JSONDecodeError:
+            print(f"Warning: Could not decode JSON metadata from AI response: {metadata_block}")
+            explanation = "Failed to extract explanation from AI."
+            resources = []
+            estimated_cost = "Failed to estimate cost."
+
         return {
-            "code": generated_code,
+            "code": code_block,
             "explanation": explanation,
-            "resources": list(set(resources))  # Remove duplicates
+            "resources": resources,
+            "estimated_cost": estimated_cost
         }
-        
+
     except Exception as e:
-        print(f"OpenAI API error: {str(e)}")
-        # Fallback to basic generation
-        return {
-            "code": call_ai_model_fallback(description, provider),
-            "explanation": f"Generated basic {provider} configuration (OpenAI error: {str(e)[:100]}...)",
-            "resources": ["fallback_configuration"]
-        }
+        print(f"Error calling OpenAI API: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate Terraform code: {e}"
+        )
 
-def call_ai_model_fallback(description: str, provider: str = "aws") -> str:
-    """Generate Terraform code based on description and provider"""
-    description_lower = description.lower()
-
-    if 'vpc' in description_lower or 'network' in description_lower:
-        return '''# VPC Configuration
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-  enable_dns_support   = true
-
-  tags = {
-    Name        = var.vpc_name
-    Environment = var.environment
-  }
-}
-
-# Internet Gateway
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${var.vpc_name}-igw"
-  }
-}
-
-# Public Subnet
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_cidr
-  availability_zone       = var.availability_zone
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "${var.vpc_name}-public-subnet"
-    Type = "Public"
-  }
-}
-
-# Variables
-variable "vpc_cidr" {
-  description = "CIDR block for VPC"
-  type        = string
-  default     = "10.0.0.0/16"
-}
-
-variable "public_subnet_cidr" {
-  description = "CIDR block for public subnet"
-  type        = string
-  default     = "10.0.1.0/24"
-}
-
-variable "vpc_name" {
-  description = "Name for the VPC"
-  type        = string
-  default     = "main-vpc"
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "dev"
-}
-
-variable "availability_zone" {
-  description = "Availability zone"
-  type        = string
-  default     = "us-east-1a"
-}
-
-# Outputs
-output "vpc_id" {
-  description = "ID of the VPC"
-  value       = aws_vpc.main.id
-}
-
-output "public_subnet_id" {
-  description = "ID of the public subnet"
-  value       = aws_subnet.public.id
-}'''
-
-    elif 'ec2' in description_lower or 'instance' in description_lower:
-        return '''# Security Group
-resource "aws_security_group" "web" {
-  name_prefix = "${var.instance_name}-sg"
-  vpc_id      = var.vpc_id
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_ssh_cidr
-  }
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${var.instance_name}-sg"
-  }
-}
-
-# EC2 Instance
-resource "aws_instance" "main" {
-  ami                    = var.ami_id
-  instance_type          = var.instance_type
-  key_name              = var.key_name
-  vpc_security_group_ids = [aws_security_group.web.id]
-  subnet_id             = var.subnet_id
-
-  tags = {
-    Name        = var.instance_name
-    Environment = var.environment
-  }
-}
-
-# Variables
-variable "ami_id" {
-  description = "AMI ID for the instance"
-  type        = string
-  default     = "ami-0c02fb55956c7d316"
-}
-
-variable "instance_type" {
-  description = "EC2 instance type"
-  type        = string
-  default     = "t2.micro"
-}
-
-variable "key_name" {
-  description = "EC2 Key Pair name"
-  type        = string
-}
-
-variable "instance_name" {
-  description = "Name for the instance"
-  type        = string
-  default     = "web-server"
-}
-
-variable "vpc_id" {
-  description = "VPC ID"
-  type        = string
-}
-
-variable "subnet_id" {
-  description = "Subnet ID"
-  type        = string
-}
-
-variable "allowed_ssh_cidr" {
-  description = "CIDR blocks allowed for SSH"
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "dev"
-}
-
-# Outputs
-output "instance_id" {
-  value = aws_instance.main.id
-}
-
-output "public_ip" {
-  value = aws_instance.main.public_ip
-}'''
-
-    else:
-        return f'''# Basic {provider.upper()} Configuration
-terraform {{
-  required_providers {{
-    {provider} = {{
-      source  = "hashicorp/{provider}"
-      version = "~> 5.0"
-    }}
-  }}
-}}
-
-provider "{provider}" {{
-  region = var.region
-}}
-
-variable "region" {{
-  description = "Cloud region"
-  type        = string
-  default     = "us-east-1"
-}}
-
-variable "environment" {{
-  description = "Environment name"
-  type        = string
-  default     = "dev"
-}}
-
-# Add your resources here based on: {description}
-resource "{provider}_example" "main" {{
-  # Configuration based on your requirements
-  tags = {{
-    Environment = var.environment
-    Purpose     = "Generated by TerraformCoder AI"
-  }}
-}}'''
-
-# --- Pydantic Models ---
+# --- Data Models (using Pydantic) ---
 class GenerateRequest(BaseModel):
     description: str = Field(..., example="create a VPC with public and private subnets")
     provider: str = Field("aws", example="aws")
@@ -425,36 +254,43 @@ def validate_terraform_code_logic(code: str) -> CodeValidationResult:
             security_score=0.0,
             best_practices_score=0.0
         )
-    
+
     issues = []
     suggestions = []
     warnings = []
-    
+
     # Basic syntax checks
     if 'resource' not in code and 'data' not in code and 'module' not in code:
         issues.append('No resources, data sources, or modules defined')
-    
+
     # Security checks
     if '0.0.0.0/0' in code:
         warnings.append('⚠️ Security Warning: Found open CIDR block (0.0.0.0/0)')
         suggestions.append('Consider restricting CIDR blocks to specific IP ranges')
-    
+
     if 'password' in code.lower() and '"' in code:
         warnings.append('⚠️ Security Warning: Possible hardcoded password detected')
         suggestions.append('Use variables or secret management for sensitive values')
-    
+
+    if 'access_key' in code.lower():
+        warnings.append('⚠️ Security Warning: Possible hardcoded access key detected')
+        suggestions.append('Use IAM roles instead of hardcoded credentials')
+
     # Best practices
     if 'tags' not in code:
-        suggestions.append('💡 Add tags to resources for better organization')
-    
+        suggestions.append('💡 Add tags to resources for better organization and cost tracking')
+
     if 'variable' not in code and len(code) > 200:
-        suggestions.append('💡 Consider using variables for reusability')
-    
+        suggestions.append('💡 Consider using variables to make configuration more reusable')
+
     if 'output' not in code:
         suggestions.append('💡 Add outputs to expose important resource information')
-    
+
+    if code.count('resource') > 3 and 'module' not in code:
+        suggestions.append('💡 Consider organizing resources into modules for better maintainability')
+
     all_issues = issues + warnings
-    
+
     return CodeValidationResult(
         valid=len(issues) == 0,
         issues=all_issues,
@@ -462,37 +298,36 @@ def validate_terraform_code_logic(code: str) -> CodeValidationResult:
         security_score=max(0.0, 100 - len(warnings) * 20),
         best_practices_score=max(0.0, 100 - len([s for s in suggestions if '💡' in s]) * 15)
     )
-
-# --- API Endpoints ---
+# --- Endpoints ---
 @app.get("/")
 async def root():
-    return {
-        "message": "Welcome to TerraformCoder AI!",
-        "status": "healthy",
-        "api_endpoint": "/api"
-    }
+    return {"message": "Welcome to TerraformCoder AI! Access API at /api", "status": "healthy"}
 
 @app.get("/api")
 async def api_root():
+    """Returns basic API information."""
     return {
         'message': 'TerraformCoder AI API is working!',
         'version': '1.0.0',
         'status': 'healthy',
         'features': ['terraform_generation', 'templates', 'validation'],
-        'openai_configured': bool(openai.api_key),
+        'openai_configured': bool(os.getenv('OPENAI_API_KEY')),
         'timestamp': datetime.utcnow().isoformat()
     }
 
 @app.get("/api/health")
 async def health_check():
+    """Performs a health check of the API."""
     return {
         'status': 'healthy',
+        'uptime': 'running',
         'timestamp': datetime.utcnow().isoformat(),
         'version': '1.0.0'
     }
 
 @app.get("/api/templates")
 async def get_templates():
+    """Returns a list of available Terraform templates."""
     return {
         'templates': [
             {
@@ -518,69 +353,84 @@ async def get_templates():
                 'category': 'database',
                 'provider': 'aws',
                 'complexity': 'intermediate'
+            },
+            {
+                'id': 's3-website',
+                'name': 'S3 Static Website',
+                'description': 'S3 bucket for static website hosting',
+                'category': 'storage',
+                'provider': 'aws',
+                'complexity': 'beginner'
             }
         ],
-        'total': 3
+        'total': 4
     }
 
-@app.get("/api/validate")
+@app.get("/api/validate", response_model=CodeValidationResult)
 async def validate_code_endpoint(code: str):
+    """Validates Terraform code for syntax, security, and best practices."""
     return validate_terraform_code_logic(code)
 
 @app.get("/api/stats")
 async def get_app_stats():
+    """Returns application usage statistics (mock data)."""
     return {
         'total_users': len(mock_users_db),
         'total_projects': len(mock_projects_db),
+        'ai_enabled': bool(os.getenv('OPENAI_API_KEY')),
         'popular_templates': ['vpc-basic', 'ec2-basic'],
         'timestamp': datetime.utcnow().isoformat()
     }
 
-@app.post("/api/generate")
-async def generate_terraform_endpoint(
-    request: GenerateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    try:
-        # Use OpenAI for generation
-        ai_result = await call_openai_for_terraform(request.description, request.provider)
-        
-        return GenerateResponse(
-            code=ai_result["code"],
-            explanation=ai_result["explanation"],
-            resources=ai_result["resources"],
-            estimated_cost='Cost estimation available in Pro version',
-            provider=request.provider,
-            generated_at=datetime.utcnow().isoformat()
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+@app.post("/api/generate", response_model=GenerateResponse)
+async def generate_terraform_endpoint(request: GenerateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Generates Terraform code based on natural language description."""
+    # The call_ai_model now returns a dict with code, explanation, resources, estimated_cost
+    ai_response = await call_ai_model(request.description, request.provider)
 
-@app.post("/api/auth/register")
-async def register_user_endpoint(request: RegisterUserRequest):
-    if request.email in mock_users_db:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="User with this email already exists"
-        )
-    
-    user_id = base64.b64encode(request.email.encode()).decode()[:12]
-    password_hash = hashlib.sha256(request.password.encode()).hexdigest()
-    
-    # Create JWT token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": request.email}, expires_delta=access_token_expires
+    # Update stats (optional)
+    mock_stats["total_generations"] += 1
+    if ai_response["code"]:
+        mock_stats["successful_generations"] += 1
+        mock_stats["top_providers"][request.provider] = mock_stats["top_providers"].get(request.provider, 0) + 1
+    else:
+        mock_stats["failed_generations"] += 1
+
+
+    return GenerateResponse(
+        code=ai_response["code"],
+        explanation=ai_response["explanation"],
+        resources=ai_response["resources"],
+        estimated_cost=ai_response["estimated_cost"],
+        provider=request.provider,
+        generated_at=datetime.utcnow().isoformat()
     )
+
+@app.post("/api/auth/register", response_model=AuthResponse)
+async def register_user_endpoint(request: RegisterUserRequest):
+    """Registers a new user."""
+    # Check if user already exists by email (case-insensitive for simplicity in mock)
+    for uid, user_data in mock_users_db.items():
+        if user_data.get('email', '').lower() == request.email.lower():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists.")
+
+    user_id = base64.b64encode(request.email.encode()).decode()[:12] # Simple unique ID for mock
     
-    # Store user data
-    mock_users_db[request.email] = {
+    # Store user in mock DB (in a real app, this would be a secure database)
+    mock_users_db[user_id] = { # Store by user_id for easier retrieval from JWT
         'id': user_id,
         'email': request.email,
         'name': request.name,
-        'password_hash': password_hash,
-        'created_at': datetime.utcnow().isoformat()
+        'password_hash': hashlib.sha256(request.password.encode()).hexdigest(), # Hashed password
+        'is_pro': True # For mock
     }
+
+    # Generate JWT
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user_id, "email": request.email, "is_pro": True},
+        expires_delta=access_token_expires
+    )
     
     return AuthResponse(
         message='User registered successfully',
@@ -589,21 +439,25 @@ async def register_user_endpoint(request: RegisterUserRequest):
         token_type='bearer'
     )
 
-@app.post("/api/auth/login")
+@app.post("/api/auth/login", response_model=AuthResponse)
 async def login_user_endpoint(request: LoginUserRequest):
-    user_data = mock_users_db.get(request.email)
-    expected_hash = hashlib.sha256(request.password.encode()).hexdigest()
+    """Logs in a user and returns a JWT token."""
+    user_id = None
+    user_data = None
+    for uid, data in mock_users_db.items():
+        if data.get('email', '').lower() == request.email.lower():
+            user_id = uid
+            user_data = data
+            break
+
+    if not user_data or user_data['password_hash'] != hashlib.sha256(request.password.encode()).hexdigest():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
     
-    if not user_data or user_data['password_hash'] != expected_hash:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
-        )
-    
-    # Create JWT token
+    # Generate JWT
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": request.email}, expires_delta=access_token_expires
+        data={"sub": user_id, "email": user_data['email'], "is_pro": user_data['is_pro']},
+        expires_delta=access_token_expires
     )
     
     return AuthResponse(
@@ -613,11 +467,9 @@ async def login_user_endpoint(request: LoginUserRequest):
         token_type='bearer'
     )
 
-@app.post("/api/projects")
-async def create_project_endpoint(
-    request: ProjectCreateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+@app.post("/api/projects", response_model=ProjectResponse)
+async def create_project_endpoint(request: ProjectCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Creates a project (mock implementation)."""
     project_id = hashlib.md5(f"{request.name}{datetime.utcnow()}".encode()).hexdigest()[:8]
     project = ProjectResponse(
         id=project_id,
@@ -630,10 +482,13 @@ async def create_project_endpoint(
     mock_projects_db[project_id] = project
     return project
 
-# --- Vercel Handler ---
-# This is the key part for Vercel deployment
+# Create the handler for Vercel
 handler = Mangum(app)
 
-# Export the handler - this is what Vercel will use
-def lambda_handler(event, context):
-    return handler(event, context)
+# For backwards compatibility, also export the app directly
+# This ensures Vercel can find the ASGI application regardless of detection method
+def application(scope, receive, send):
+    return handler(scope, receive, send)
+
+# Also provide the handler as 'handler' for explicit access
+__all__ = ['app', 'handler', 'application']
