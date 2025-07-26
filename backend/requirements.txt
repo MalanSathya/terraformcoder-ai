@@ -4,3 +4,4 @@ uvicorn
 mangum
 pydantic
 pyjwt
+httpx==0.24.1
