@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 # --- Environment Config ---
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-dev-secret")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "Srtm#356")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
