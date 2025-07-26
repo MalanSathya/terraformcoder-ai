@@ -13,19 +13,24 @@ import base64
 import hashlib
 
 # --- FastAPI App Initialization ---
-app = FastAPI(
-    title="TerraformCoder AI API",
-    description="Generate, validate, and manage Terraform code with AI assistance.",
-    version="1.0.0"
-)
+app = FastAPI()
+# app = FastAPI(
+#     title="TerraformCoder AI API",
+#     description="Generate, validate, and manage Terraform code with AI assistance.",
+#     version="1.0.0"
+# )
 
 # --- CORS Configuration ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://terraformcoder-ai.vercel.app"],
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
+    # allow_origins=["https://terraformcoder-ai.vercel.app"],
+    # allow_credentials=True,
+    # allow_methods=["GET", "POST", "OPTIONS"],
+    # allow_headers=["*"],
 )
 
 # --- Security (Mock/Placeholder) ---
