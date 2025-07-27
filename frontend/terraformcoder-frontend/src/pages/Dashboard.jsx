@@ -34,7 +34,9 @@ const Dashboard = () => {
           <pre className="bg-black text-green-300 p-2 rounded overflow-auto"><code>{result.code}</code></pre>
           <p className="mt-4"><strong>Explanation:</strong> {result.explanation}</p>
           <p><strong>Estimated Cost:</strong> {result.estimated_cost}</p>
+          <footer className="text-center text-xs text-gray-600 mt-10">Terraform Coder AI © 2025 • Built with ❤️ by Malan </footer>
         </GlassCard>
+        
       )}
     </div>
   );

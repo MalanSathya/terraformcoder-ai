@@ -32,9 +32,7 @@ const navigate = useNavigate();
         <input type="password" placeholder="Password" className="w-full p-2 mb-4 rounded bg-gray-800 text-white"
           value={password} onChange={(e) => setPassword(e.target.value)} />
         <button onClick={handleLogin} className="w-full bg-blue-500 hover:bg-blue-600 p-2 rounded">Login</button>
-        <p className="text-sm mt-4 text-center">
-  Don't have an account? <a href="/register" className="text-blue-400 hover:underline">Register</a>
-</p>
+        <p className="text-sm mt-4 text-center">Don't have an account? <a href="/register" className="text-blue-400 hover:underline">Register</a></p>
       </GlassCard>
     </div>
   );
