@@ -25,7 +25,8 @@ const navigate = useNavigate();
   return (
     <div className="flex justify-center items-center min-h-screen">
       <GlassCard className="w-full max-w-md">
-        <h2 className="text-xl font-bold mb-4">Register</h2>
+        <h2 className="text-2xl font-bold mb-4">Join Terraform Coder AI</h2>
+        <p className="text-sm mb-4 text-gray-300">Create your account to start generating Terraform code</p>
         <input type="text" placeholder="Name" className="w-full p-2 mb-2 rounded bg-gray-800 text-white"
           value={name} onChange={(e) => setName(e.target.value)} />
         <input type="email" placeholder="Email" className="w-full p-2 mb-2 rounded bg-gray-800 text-white"
