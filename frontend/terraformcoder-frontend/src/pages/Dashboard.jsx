@@ -23,7 +23,7 @@ const Dashboard = () => {
       {/* Logout button */}
       <button
   onClick={logout}
-  className="fixed top-4 left-4 z-50 bg-white/10 backdrop-blur-md text-white border border-white/20 px-4 py-2 rounded-lg shadow-lg hover:bg-white/20 transition duration-200"
+  className="fixed top-4 right-4 z-50 bg-white/10 backdrop-blur-md text-white border border-white/20 px-4 py-2 rounded-lg shadow-lg hover:bg-white/20 transition duration-200"
 >
   Logout
 </button>
