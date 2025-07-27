@@ -22,11 +22,11 @@ const Dashboard = () => {
       
       {/* Logout button */}
       <button
-        onClick={logout}
-        className="fixed top-4 left-4 bg-white/10 backdrop-blur-md text-white border border-white/20 px-4 py-2 rounded-lg shadow-md hover:bg-white/20 transition duration-200 z-50"
-      >
-        Logout
-      </button>
+  onClick={logout}
+  className="fixed top-4 left-4 z-50 bg-white/10 backdrop-blur-md text-white border border-white/20 px-4 py-2 rounded-lg shadow-lg hover:bg-white/20 transition duration-200"
+>
+  Logout
+</button>
 
       {/* Welcome Section */}
       <GlassCard className="mb-8">
