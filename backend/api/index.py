@@ -107,7 +107,7 @@ Return the response in this format:
 
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-3.5",
+            model="gpt-4o mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
