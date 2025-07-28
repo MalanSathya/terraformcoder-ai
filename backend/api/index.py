@@ -32,7 +32,7 @@ app.add_middleware(
 
 # --- Security ---
 security = HTTPBearer()
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-key")  # Replace in prod
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "Srtm#356")  # Replace in prod
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
