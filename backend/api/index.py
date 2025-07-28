@@ -10,6 +10,8 @@ import base64
 import os
 import json
 import jwt
+import httpx
+print("HTTPX VERSION:", httpx.__version__)
 from jwt.exceptions import PyJWTError
 from mistralai.client import MistralClient
 from supabase import create_client, Client

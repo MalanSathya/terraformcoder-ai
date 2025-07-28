@@ -1,8 +1,8 @@
-fastapi
-uvicorn
+fastapi==0.110.1
+uvicorn==0.29.0
 httpx==0.25.2
-pyjwt
+pyjwt==2.8.0
 mistralai==0.3.0
-python-multipart
+python-multipart==0.0.9
 supabase==2.3.4
-python-dotenv
+python-dotenv==1.0.1
