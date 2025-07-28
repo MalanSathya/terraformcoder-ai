@@ -10,7 +10,7 @@ import os
 import json
 import jwt
 from jwt.exceptions import PyJWTError
-from mistralai import Mistral
+from mistralai.client import MistralClient
 
 # --- FastAPI App ---
 app = FastAPI(title="TerraformCoder AI API")
@@ -32,7 +32,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # --- Mistral AI Client ---
 # Ensure you set MISTRAL_API_KEY in your environment variables
-mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
+mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
 MISTRAL_MODEL = "codestral-latest"  # Using the latest Codestral model
 
 # --- Mock Databases ---
@@ -129,7 +129,7 @@ Return the response in this EXACT format:
             {"role": "user", "content": user_message}
         ]
         
-        response = mistral_client.chat.complete(
+        response = mistral_client.chat(
             model=MISTRAL_MODEL,
             messages=messages,
             temperature=0.7,
