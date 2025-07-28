@@ -1,8 +1,7 @@
-fastapi==0.110.1
-uvicorn==0.29.0
-httpx==0.25.2
-pyjwt==2.8.0
+fastapi
+uvicorn
+python-multipart
+python-dotenv
 mistralai==0.3.0
-python-multipart==0.0.9
-#supabase==2.1.1
-python-dotenv==1.0.1
+supabase>=2.5.0
+# No need to manually pin httpx; pip will resolve it
