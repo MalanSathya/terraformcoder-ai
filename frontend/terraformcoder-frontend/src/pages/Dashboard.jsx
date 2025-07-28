@@ -53,7 +53,7 @@ const Dashboard = () => {
           <span className="flex items-center space-x-2">
             <span>Logout</span>
             <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1" />
             </svg>
           </span>
         </button>
@@ -131,10 +131,48 @@ const Dashboard = () => {
               <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
                 Generated Terraform Code
               </h3>
+              {result.cached_response && (
+                <span className="px-2 py-1 bg-yellow-500/20 text-yellow-300 rounded-lg text-xs font-medium border border-yellow-500/30">
+                  📋 Cached
+                </span>
+              )}
             </div>
 
+            {/* File Hierarchy Section - NEW */}
+            {result.file_hierarchy && (
+              <div className="mb-6 p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
+                <div className="flex items-center space-x-2 mb-3">
+                  <span className="text-xl">📁</span>
+                  <h4 className="font-semibold text-slate-200">File Hierarchy</h4>
+                </div>
+                <pre className="text-slate-300 font-mono text-sm leading-relaxed whitespace-pre-wrap">
+                  {result.file_hierarchy}
+                </pre>
+              </div>
+            )}
+
+            {/* Generated Resources - NEW */}
+            {result.resources && result.resources.length > 0 && (
+              <div className="mb-6 p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
+                <div className="flex items-center space-x-2 mb-3">
+                  <span className="text-xl">🏗️</span>
+                  <h4 className="font-semibold text-slate-200">Resources Created</h4>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {result.resources.map((resource, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-sm font-medium border border-emerald-500/30"
+                    >
+                      {resource}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="relative mb-6">
-              <pre className="bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 text-emerald-300 p-6 rounded-xl overflow-auto text-sm leading-relaxed shadow-inner">
+              <pre className="bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 text-emerald-300 p-6 rounded-xl overflow-auto text-sm leading-relaxed shadow-inner max-h-96">
                 <code>{result.code}</code>
               </pre>
               <button
@@ -162,7 +200,27 @@ const Dashboard = () => {
                   <span className="text-xl">💰</span>
                   <h4 className="font-semibold text-slate-200">Estimated Cost</h4>
                 </div>
-                <p className="text-slate-300 leading-relaxed">{result.estimated_cost}</p>
+                <div className="flex items-center space-x-2">
+                  <span 
+                    className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                      result.estimated_cost === 'Low' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
+                      result.estimated_cost === 'Medium' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
+                      result.estimated_cost === 'High' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+                      'bg-slate-500/20 text-slate-300 border border-slate-500/30'
+                    }`}
+                  >
+                    {result.estimated_cost}
+                  </span>
+                  <span className="text-slate-400 text-sm">estimated cost</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Generation Info - NEW */}
+            <div className="mt-6 pt-4 border-t border-slate-700/30">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Generated on {new Date(result.generated_at).toLocaleString()}</span>
+                <span>Provider: {result.provider?.toUpperCase()}</span>
               </div>
             </div>
           </GlassCard>
