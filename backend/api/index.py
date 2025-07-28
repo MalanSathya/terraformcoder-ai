@@ -70,6 +70,7 @@ class GenerateResponse(BaseModel):
     provider: str
     generated_at: str
     cached_response: bool = False  # Minor Feature: Indicate if response was cached
+    folder_structure: Dict[str, str] = {}  # New: Folder structure with filename -> content mapping
 
 # --- JWT Utils ---
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -106,18 +107,27 @@ Follow these stringent rules:
 - Ensure the generated code is valid Terraform syntax for {provider}.
 - Include all necessary provider and resource blocks.
 - Use meaningful comments within the Terraform code for clarity.
-- DO NOT include ANY extra text outside of the code block.
-- ALWAYS wrap the Terraform code in a ```terraform tag.
+- Structure the code into logical files (main.tf, variables.tf, outputs.tf, etc.)
+- DO NOT include ANY extra text outside of the code blocks.
+- ALWAYS wrap each Terraform file in separate code blocks with filenames.
 - ALWAYS provide structured metadata in a separate JSON block.
-- The JSON block MUST contain 'explanation', 'resources' (a list of generated resource types), and 'estimated_cost' (a simple string like "Low", "Medium", "High", or "Varies").
+- The JSON block MUST contain 'explanation', 'resources' (a list of generated resource types), 'estimated_cost' (a simple string like "Low", "Medium", "High", or "Varies"), and 'folder_structure' (object with filename as key and file purpose as value).
 
 Return the response in this EXACT format:
-```terraform
-# terraform code here
+```terraform:main.tf
+# Main terraform configuration
+```
+
+```terraform:variables.tf
+# Variable definitions
+```
+
+```terraform:outputs.tf
+# Output definitions
 ```
 
 ```json
-{{"explanation": "...", "resources": ["..."], "estimated_cost": "..."}}
+{{"explanation": "...", "resources": ["..."], "estimated_cost": "...", "folder_structure": {{"main.tf": "Main configuration", "variables.tf": "Variable definitions", "outputs.tf": "Output values"}}}}
 ```
 """
 
@@ -139,17 +149,33 @@ Return the response in this EXACT format:
 
         code = ""
         metadata = {}
+        folder_structure = {}
         
-        # Extract Terraform code
-        # Using more robust splitlines to handle potential empty lines after ```terraform
-        code_start_tag = "```terraform"
-        code_end_tag = "```"
-        if code_start_tag in content:
-            parts = content.split(code_start_tag, 1)
-            if len(parts) > 1:
-                code_block_potential = parts[1]
-                if code_end_tag in code_block_potential:
-                    code = code_block_potential.split(code_end_tag, 1)[0].strip()
+        # Extract multiple Terraform files with filenames
+        import re
+        terraform_pattern = r'```terraform:([^\n]+)\n(.*?)```'
+        terraform_matches = re.findall(terraform_pattern, content, re.DOTALL)
+        
+        if terraform_matches:
+            # If we have multiple files, combine them for the main code field
+            all_code_parts = []
+            for filename, file_content in terraform_matches:
+                filename = filename.strip()
+                file_content = file_content.strip()
+                folder_structure[filename] = file_content
+                all_code_parts.append(f"# File: {filename}\n{file_content}")
+            code = "\n\n# " + "="*50 + "\n\n".join(all_code_parts)
+        else:
+            # Fallback to old single-file format
+            code_start_tag = "```terraform"
+            code_end_tag = "```"
+            if code_start_tag in content:
+                parts = content.split(code_start_tag, 1)
+                if len(parts) > 1:
+                    code_block_potential = parts[1]
+                    if code_end_tag in code_block_potential:
+                        code = code_block_potential.split(code_end_tag, 1)[0].strip()
+                        folder_structure["main.tf"] = code
         
         # Extract JSON metadata
         json_start_tag = "```json"
@@ -157,6 +183,7 @@ Return the response in this EXACT format:
             parts = content.split(json_start_tag, 1)
             if len(parts) > 1:
                 json_block_potential = parts[1]
+                code_end_tag = "```"
                 if code_end_tag in json_block_potential:
                     json_block = json_block_potential.split(code_end_tag, 1)[0].strip()
                     try:
@@ -169,7 +196,8 @@ Return the response in this EXACT format:
             "code": code,
             "explanation": metadata.get("explanation", "No explanation provided."),
             "resources": metadata.get("resources", []),
-            "estimated_cost": metadata.get("estimated_cost", "Unknown")
+            "estimated_cost": metadata.get("estimated_cost", "Unknown"),
+            "folder_structure": folder_structure or metadata.get("folder_structure", {"main.tf": code})
         }
         
         response_cache[cache_key] = result.copy()  # Store a copy in cache
@@ -246,7 +274,8 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         estimated_cost=result["estimated_cost"],
         provider=request.provider,
         generated_at=datetime.utcnow().isoformat(),
-        cached_response=result.get("cached_response", False)  # Pass through cache status
+        cached_response=result.get("cached_response", False),  # Pass through cache status
+        folder_structure=result["folder_structure"]
     )
 
 # --- Health Check ---
