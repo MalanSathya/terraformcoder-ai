@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 import hashlib
@@ -10,8 +10,7 @@ import os
 import json
 import jwt
 from jwt.exceptions import PyJWTError
-from mistralai.client import MistralClient
-from mistralai.models.chat_completion import ChatMessage
+from openai import OpenAI
 
 # --- FastAPI App ---
 app = FastAPI(title="TerraformCoder AI API")
@@ -31,16 +30,11 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-key")  # Replace in prod
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-# --- Mistral AI Client ---
-# Ensure you set MISTRAL_API_KEY in your environment variables
-mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
-MISTRAL_MODEL = "codestral-latest"  # Using the latest Codestral model
+# --- OpenAI ---
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # --- Mock Databases ---
 mock_users_db = {}
-# Add a simple in-memory cache for AI responses to save on API calls during testing
-# In a real app, use Redis or similar
-response_cache: Dict[str, Dict] = {}
 
 # --- Pydantic Models ---
 class RegisterRequest(BaseModel):
@@ -59,8 +53,7 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
 
 class GenerateRequest(BaseModel):
-    description: str = Field(..., min_length=10, max_length=1000,
-                           description="A detailed description of the Terraform code to generate.")
+    description: str
     provider: str = "aws"
 
 class GenerateResponse(BaseModel):
@@ -70,7 +63,6 @@ class GenerateResponse(BaseModel):
     estimated_cost: str
     provider: str
     generated_at: str
-    cached_response: bool = False  # Minor Feature: Indicate if response was cached
 
 # --- JWT Utils ---
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -85,34 +77,23 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None or user_id not in mock_users_db:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token or user.")
+            raise HTTPException(status_code=401, detail="Invalid token or user.")
         return mock_users_db[user_id]
     except PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials.")
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials.")
 
-# --- Mistral AI Call ---
+# --- OpenAI Call ---
 async def call_ai_model(description: str, provider: str = "aws"):
-    # Minor Feature: Simple caching based on description and provider
-    cache_key = hashlib.sha256(f"{description}-{provider}".encode()).hexdigest()
-    if cache_key in response_cache:
-        print(f"DEBUG: Serving from cache for key: {cache_key}")
-        cached_data = response_cache[cache_key]
-        cached_data["cached_response"] = True
-        return cached_data
-
     system_prompt = f"""
-You are an expert in Terraform code generation, specifically for the {provider} cloud provider.
-Your task is to generate ONLY the Terraform (.tf) code based on the user's request.
-Follow these stringent rules:
-- Ensure the generated code is valid Terraform syntax for {provider}.
-- Include all necessary provider and resource blocks.
-- Use meaningful comments within the Terraform code for clarity.
-- DO NOT include ANY extra text outside of the code block.
-- ALWAYS wrap the Terraform code in a ```terraform tag.
-- ALWAYS provide structured metadata in a separate JSON block.
-- The JSON block MUST contain 'explanation', 'resources' (a list of generated resource types), and 'estimated_cost' (a simple string like "Low", "Medium", "High", or "Varies").
+You are an expert in Terraform code generation.
+Generate ONLY the Terraform (.tf) code based on the user's request.
+Follow these rules:
+- Use provider: {provider}
+- Include valid provider/resource blocks
+- Use comments for clarity
+- No extra text outside code
 
-Return the response in this EXACT format:
+Return the response in this format:
 ```terraform
 # terraform code here
 ```
@@ -122,17 +103,15 @@ Return the response in this EXACT format:
 ```
 """
 
-    user_message = f"Generate Terraform code for {provider} to {description}."
+    user_message = f"Generate Terraform code to {description}."
 
     try:
-        messages = [
-            ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=user_message)
-        ]
-        
-        response = mistral_client.chat(
-            model=MISTRAL_MODEL,
-            messages=messages,
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
             temperature=0.7,
             max_tokens=2048
         )
@@ -142,45 +121,26 @@ Return the response in this EXACT format:
         metadata = {}
         
         # Extract Terraform code
-        # Using more robust splitlines to handle potential empty lines after ```terraform
-        code_start_tag = "```terraform"
-        code_end_tag = "```"
-        if code_start_tag in content:
-            parts = content.split(code_start_tag, 1)
-            if len(parts) > 1:
-                code_block_potential = parts[1]
-                if code_end_tag in code_block_potential:
-                    code = code_block_potential.split(code_end_tag, 1)[0].strip()
+        if "```terraform" in content:
+            code = content.split("```terraform")[1].split("```")[0].strip()
         
         # Extract JSON metadata
-        json_start_tag = "```json"
-        if json_start_tag in content:
-            parts = content.split(json_start_tag, 1)
-            if len(parts) > 1:
-                json_block_potential = parts[1]
-                if code_end_tag in json_block_potential:
-                    json_block = json_block_potential.split(code_end_tag, 1)[0].strip()
-                    try:
-                        metadata = json.loads(json_block)
-                    except json.JSONDecodeError as e:
-                        print(f"WARNING: Could not decode JSON from AI response: {e}. Raw JSON block: {json_block}")
-                        metadata = {}  # Fallback to empty if JSON is malformed
+        if "```json" in content:
+            json_block = content.split("```json")[1].split("```")[0].strip()
+            try:
+                metadata = json.loads(json_block)
+            except json.JSONDecodeError:
+                metadata = {}
 
-        result = {
+        return {
             "code": code,
-            "explanation": metadata.get("explanation", "No explanation provided."),
+            "explanation": metadata.get("explanation", ""),
             "resources": metadata.get("resources", []),
             "estimated_cost": metadata.get("estimated_cost", "Unknown")
         }
-        
-        response_cache[cache_key] = result.copy()  # Store a copy in cache
-        result["cached_response"] = False  # Indicate it's a fresh response
-        return result
 
     except Exception as e:
-        # Minor Feature: Log the exact error for debugging
-        print(f"ERROR: AI generation failed with Mistral AI: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"AI generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
 # --- Routes ---
 @app.get("/")
@@ -192,7 +152,7 @@ def register(request: RegisterRequest):
     # Check if user already exists
     for user in mock_users_db.values():
         if user["email"].lower() == request.email.lower():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists.")
+            raise HTTPException(status_code=409, detail="User already exists.")
 
     # Create new user
     user_id = base64.b64encode(request.email.encode()).decode()[:12]
@@ -208,7 +168,7 @@ def register(request: RegisterRequest):
 
     # Generate token
     token = create_access_token({"sub": user_id})
-
+    
     return AuthResponse(
         message="User registered successfully",
         user={"id": user_id, "email": request.email, "name": request.name},
@@ -229,25 +189,20 @@ def login(request: LoginRequest):
                     access_token=token
                 )
             break
-
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+    
+    raise HTTPException(status_code=401, detail="Invalid credentials.")
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate(request: GenerateRequest, current_user: Dict = Depends(get_current_user)):
-    # Minor Feature: More robust input validation with Pydantic Field
-    if not request.description.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Description cannot be empty.")
-
     result = await call_ai_model(request.description, request.provider)
-
+    
     return GenerateResponse(
         code=result["code"],
         explanation=result["explanation"],
         resources=result["resources"],
         estimated_cost=result["estimated_cost"],
         provider=request.provider,
-        generated_at=datetime.utcnow().isoformat(),
-        cached_response=result.get("cached_response", False)  # Pass through cache status
+        generated_at=datetime.utcnow().isoformat()
     )
 
 # --- Health Check ---
@@ -258,219 +213,3 @@ def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-# from fastapi import FastAPI, HTTPException, Depends, status
-# from fastapi.middleware.cors import CORSMiddleware
-# from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-# from pydantic import BaseModel
-# from typing import Optional, Dict, List
-# from datetime import datetime, timedelta
-# import hashlib
-# import base64
-# import os
-# import json
-# import jwt
-# from jwt.exceptions import PyJWTError
-# from openai import OpenAI
-
-# # --- FastAPI App ---
-# app = FastAPI(title="TerraformCoder AI API")
-
-# # --- CORS Middleware ---
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # Change this to your frontend URL in production
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# # --- Security ---
-# security = HTTPBearer()
-# SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-key")  # Replace in prod
-# ALGORITHM = "HS256"
-# ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
-# # --- OpenAI ---
-# openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# # --- Mock Databases ---
-# mock_users_db = {}
-
-# # --- Pydantic Models ---
-# class RegisterRequest(BaseModel):
-#     email: str
-#     name: str
-#     password: str
-
-# class LoginRequest(BaseModel):
-#     email: str
-#     password: str
-
-# class AuthResponse(BaseModel):
-#     message: str
-#     user: Dict[str, str]
-#     access_token: str
-#     token_type: str = "bearer"
-
-# class GenerateRequest(BaseModel):
-#     description: str
-#     provider: str = "aws"
-
-# class GenerateResponse(BaseModel):
-#     code: str
-#     explanation: str
-#     resources: List[str]
-#     estimated_cost: str
-#     provider: str
-#     generated_at: str
-
-# # --- JWT Utils ---
-# def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-#     to_encode = data.copy()
-#     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
-#     to_encode.update({"exp": expire})
-#     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-# def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-#     token = credentials.credentials
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-#         user_id = payload.get("sub")
-#         if user_id is None or user_id not in mock_users_db:
-#             raise HTTPException(status_code=401, detail="Invalid token or user.")
-#         return mock_users_db[user_id]
-#     except PyJWTError:
-#         raise HTTPException(status_code=401, detail="Invalid authentication credentials.")
-
-# # --- OpenAI Call ---
-# async def call_ai_model(description: str, provider: str = "aws"):
-#     system_prompt = f"""
-# You are an expert in Terraform code generation.
-# Generate ONLY the Terraform (.tf) code based on the user's request.
-# Follow these rules:
-# - Use provider: {provider}
-# - Include valid provider/resource blocks
-# - Use comments for clarity
-# - No extra text outside code
-
-# Return the response in this format:
-# ```terraform
-# # terraform code here
-# ```
-
-# ```json
-# {{"explanation": "...", "resources": ["..."], "estimated_cost": "..."}}
-# ```
-# """
-
-#     user_message = f"Generate Terraform code to {description}."
-
-#     try:
-#         response = openai_client.chat.completions.create(
-#             model="gpt-3.5-turbo",
-#             messages=[
-#                 {"role": "system", "content": system_prompt},
-#                 {"role": "user", "content": user_message}
-#             ],
-#             temperature=0.7,
-#             max_tokens=2048
-#         )
-#         content = response.choices[0].message.content.strip()
-
-#         code = ""
-#         metadata = {}
-        
-#         # Extract Terraform code
-#         if "```terraform" in content:
-#             code = content.split("```terraform")[1].split("```")[0].strip()
-        
-#         # Extract JSON metadata
-#         if "```json" in content:
-#             json_block = content.split("```json")[1].split("```")[0].strip()
-#             try:
-#                 metadata = json.loads(json_block)
-#             except json.JSONDecodeError:
-#                 metadata = {}
-
-#         return {
-#             "code": code,
-#             "explanation": metadata.get("explanation", ""),
-#             "resources": metadata.get("resources", []),
-#             "estimated_cost": metadata.get("estimated_cost", "Unknown")
-#         }
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
-
-# # --- Routes ---
-# @app.get("/")
-# def root():
-#     return {"message": "TerraformCoder AI API is running!"}
-
-# @app.post("/api/auth/register", response_model=AuthResponse)
-# def register(request: RegisterRequest):
-#     # Check if user already exists
-#     for user in mock_users_db.values():
-#         if user["email"].lower() == request.email.lower():
-#             raise HTTPException(status_code=409, detail="User already exists.")
-
-#     # Create new user
-#     user_id = base64.b64encode(request.email.encode()).decode()[:12]
-#     password_hash = hashlib.sha256(request.password.encode()).hexdigest()
-
-#     user_data = {
-#         "id": user_id,
-#         "email": request.email,
-#         "name": request.name,
-#         "password_hash": password_hash
-#     }
-#     mock_users_db[user_id] = user_data
-
-#     # Generate token
-#     token = create_access_token({"sub": user_id})
-    
-#     return AuthResponse(
-#         message="User registered successfully",
-#         user={"id": user_id, "email": request.email, "name": request.name},
-#         access_token=token
-#     )
-
-# @app.post("/api/auth/login", response_model=AuthResponse)
-# def login(request: LoginRequest):
-#     # Find user and validate password
-#     for user_id, user in mock_users_db.items():
-#         if user["email"].lower() == request.email.lower():
-#             hashed = hashlib.sha256(request.password.encode()).hexdigest()
-#             if user["password_hash"] == hashed:
-#                 token = create_access_token({"sub": user_id})
-#                 return AuthResponse(
-#                     message="Login successful",
-#                     user={"id": user["id"], "email": user["email"], "name": user["name"]},
-#                     access_token=token
-#                 )
-#             break
-    
-#     raise HTTPException(status_code=401, detail="Invalid credentials.")
-
-# @app.post("/api/generate", response_model=GenerateResponse)
-# async def generate(request: GenerateRequest, current_user: Dict = Depends(get_current_user)):
-#     result = await call_ai_model(request.description, request.provider)
-    
-#     return GenerateResponse(
-#         code=result["code"],
-#         explanation=result["explanation"],
-#         resources=result["resources"],
-#         estimated_cost=result["estimated_cost"],
-#         provider=request.provider,
-#         generated_at=datetime.utcnow().isoformat()
-#     )
-
-# # --- Health Check ---
-# @app.get("/health")
-# def health_check():
-#     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
