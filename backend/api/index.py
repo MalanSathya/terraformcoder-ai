@@ -1,3 +1,4 @@
+# --- JWT Utils ---
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -11,6 +12,11 @@ import json
 import jwt
 from jwt.exceptions import PyJWTError
 from mistralai.client import MistralClient
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # --- FastAPI App ---
 app = FastAPI(title="TerraformCoder AI API")
@@ -30,15 +36,21 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-key")  # Replace in prod
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
+# --- Supabase Client ---
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 # --- Mistral AI Client ---
 # Ensure you set MISTRAL_API_KEY in your environment variables
 mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
 MISTRAL_MODEL = "codestral-latest"  # Using the latest Codestral model
 
-# --- Mock Databases ---
-mock_users_db = {}
-# Add a simple in-memory cache for AI responses to save on API calls during testing
-# In a real app, use Redis or similar
+# --- In-memory cache (consider Redis for production) ---
 response_cache: Dict[str, Dict] = {}
 
 # --- Pydantic Models ---
@@ -72,21 +84,96 @@ class GenerateResponse(BaseModel):
     cached_response: bool = False  # Minor Feature: Indicate if response was cached
     file_hierarchy: str = ""  # New: Tree-like file structure display
 
-# --- JWT Utils ---
+# --- Database Helper Functions ---
+async def create_user(email: str, name: str, password: str):
+    """Create a new user in Supabase"""
+    try:
+        # Hash password
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        
+        # Insert user into database
+        result = supabase.table("users").insert({
+            "email": email.lower(),
+            "name": name,
+            "password_hash": password_hash
+        }).execute()
+        
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Database error creating user: {e}")
+        return None
+
+async def get_user_by_email(email: str):
+    """Get user by email from Supabase"""
+    try:
+        result = supabase.table("users").select("*").eq("email", email.lower()).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Database error getting user: {e}")
+        return None
+
+async def get_user_by_id(user_id: str):
+    """Get user by ID from Supabase"""
+    try:
+        result = supabase.table("users").select("*").eq("id", user_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Database error getting user by ID: {e}")
+        return None
+
+async def save_generation(user_id: str, description: str, provider: str, result_data: dict):
+    """Save generation history to Supabase"""
+    try:
+        generation_data = {
+            "user_id": user_id,
+            "description": description,
+            "provider": provider,
+            "code": result_data["code"],
+            "explanation": result_data["explanation"],
+            "resources": result_data["resources"],
+            "estimated_cost": result_data["estimated_cost"],
+            "file_hierarchy": result_data["file_hierarchy"]
+        }
+        
+        result = supabase.table("generations").insert(generation_data).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        print(f"Database error saving generation: {e}")
+        return None
+
+async def get_user_generations(user_id: str, limit: int = 10):
+    """Get user's generation history from Supabase"""
+    try:
+        result = supabase.table("generations").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        print(f"Database error getting generations: {e}")
+        return []
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
-        if user_id is None or user_id not in mock_users_db:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token or user.")
-        return mock_users_db[user_id]
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
+        
+        user = await get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found.")
+        
+        return user
     except PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials.")
 
@@ -225,49 +312,46 @@ def root():
     return {"message": "TerraformCoder AI API is running!"}
 
 @app.post("/api/auth/register", response_model=AuthResponse)
-def register(request: RegisterRequest):
+async def register(request: RegisterRequest):
     # Check if user already exists
-    for user in mock_users_db.values():
-        if user["email"].lower() == request.email.lower():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists.")
+    existing_user = await get_user_by_email(request.email)
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists.")
 
     # Create new user
-    user_id = base64.b64encode(request.email.encode()).decode()[:12]
-    password_hash = hashlib.sha256(request.password.encode()).hexdigest()
-
-    user_data = {
-        "id": user_id,
-        "email": request.email,
-        "name": request.name,
-        "password_hash": password_hash
-    }
-    mock_users_db[user_id] = user_data
+    user = await create_user(request.email, request.name, request.password)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user.")
 
     # Generate token
-    token = create_access_token({"sub": user_id})
+    token = create_access_token({"sub": str(user["id"])})
 
     return AuthResponse(
         message="User registered successfully",
-        user={"id": user_id, "email": request.email, "name": request.name},
+        user={"id": str(user["id"]), "email": user["email"], "name": user["name"]},
         access_token=token
     )
 
 @app.post("/api/auth/login", response_model=AuthResponse)
-def login(request: LoginRequest):
+async def login(request: LoginRequest):
     # Find user and validate password
-    for user_id, user in mock_users_db.items():
-        if user["email"].lower() == request.email.lower():
-            hashed = hashlib.sha256(request.password.encode()).hexdigest()
-            if user["password_hash"] == hashed:
-                token = create_access_token({"sub": user_id})
-                return AuthResponse(
-                    message="Login successful",
-                    user={"id": user["id"], "email": user["email"], "name": user["name"]},
-                    access_token=token
-                )
-            break
-
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+    user = await get_user_by_email(request.email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+    
+    # Verify password
+    hashed = hashlib.sha256(request.password.encode()).hexdigest()
+    if user["password_hash"] != hashed:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+    
+    # Generate token
+    token = create_access_token({"sub": str(user["id"])})
+    
+    return AuthResponse(
+        message="Login successful",
+        user={"id": str(user["id"]), "email": user["email"], "name": user["name"]},
+        access_token=token
+    )
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate(request: GenerateRequest, current_user: Dict = Depends(get_current_user)):
@@ -276,6 +360,14 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Description cannot be empty.")
 
     result = await call_ai_model(request.description, request.provider)
+
+    # Save generation to database
+    await save_generation(
+        user_id=str(current_user["id"]),
+        description=request.description,
+        provider=request.provider,
+        result_data=result
+    )
 
     return GenerateResponse(
         code=result["code"],
@@ -287,6 +379,37 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         cached_response=result.get("cached_response", False),  # Pass through cache status
         file_hierarchy=result["file_hierarchy"]
     )
+
+# --- Additional Models ---
+class GenerationHistory(BaseModel):
+    id: str
+    description: str
+    provider: str
+    code: str
+    explanation: str
+    resources: List[str]
+    estimated_cost: str
+    file_hierarchy: str
+    created_at: str
+
+@app.get("/api/history", response_model=List[GenerationHistory])
+async def get_history(current_user: Dict = Depends(get_current_user), limit: int = 10):
+    """Get user's generation history"""
+    generations = await get_user_generations(str(current_user["id"]), limit)
+    return [
+        GenerationHistory(
+            id=str(gen["id"]),
+            description=gen["description"],
+            provider=gen["provider"],
+            code=gen["code"],
+            explanation=gen["explanation"],
+            resources=gen["resources"] or [],
+            estimated_cost=gen["estimated_cost"],
+            file_hierarchy=gen["file_hierarchy"] or "",
+            created_at=gen["created_at"]
+        )
+        for gen in generations
+    ]
 
 # --- Health Check ---
 @app.get("/health")
