@@ -4,4 +4,5 @@ python-multipart
 python-dotenv
 mistralai==0.3.0
 supabase>=2.5.0
-# No need to manually pin httpx; pip will resolve it
+httpx==0.25.2
+# No need to manually pin httpx; pip will resolve ity
