@@ -70,7 +70,7 @@ class GenerateResponse(BaseModel):
     provider: str
     generated_at: str
     cached_response: bool = False  # Minor Feature: Indicate if response was cached
-    folder_structure: Dict[str, str] = {}  # New: Folder structure with filename -> content mapping
+    file_hierarchy: str = ""  # New: Tree-like file structure display
 
 # --- JWT Utils ---
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -111,7 +111,7 @@ Follow these stringent rules:
 - DO NOT include ANY extra text outside of the code blocks.
 - ALWAYS wrap each Terraform file in separate code blocks with filenames.
 - ALWAYS provide structured metadata in a separate JSON block.
-- The JSON block MUST contain 'explanation', 'resources' (a list of generated resource types), 'estimated_cost' (a simple string like "Low", "Medium", "High", or "Varies"), and 'folder_structure' (object with filename as key and file purpose as value).
+- The JSON block MUST contain 'explanation', 'resources' (a list of generated resource types), 'estimated_cost' (a simple string like "Low", "Medium", "High", or "Varies"), and 'file_hierarchy' (a tree-like string showing the project structure).
 
 Return the response in this EXACT format:
 ```terraform:main.tf
@@ -127,7 +127,7 @@ Return the response in this EXACT format:
 ```
 
 ```json
-{{"explanation": "...", "resources": ["..."], "estimated_cost": "...", "folder_structure": {{"main.tf": "Main configuration", "variables.tf": "Variable definitions", "outputs.tf": "Output values"}}}}
+{{"explanation": "...", "resources": ["..."], "estimated_cost": "...", "file_hierarchy": "terraform-project/\\n├── main.tf\\n├── variables.tf\\n├── outputs.tf\\n└── terraform.tfvars.example"}}
 ```
 """
 
@@ -149,7 +149,7 @@ Return the response in this EXACT format:
 
         code = ""
         metadata = {}
-        folder_structure = {}
+        file_hierarchy = ""
         
         # Extract multiple Terraform files with filenames
         import re
@@ -159,12 +159,22 @@ Return the response in this EXACT format:
         if terraform_matches:
             # If we have multiple files, combine them for the main code field
             all_code_parts = []
+            filenames = []
             for filename, file_content in terraform_matches:
                 filename = filename.strip()
                 file_content = file_content.strip()
-                folder_structure[filename] = file_content
+                filenames.append(filename)
                 all_code_parts.append(f"# File: {filename}\n{file_content}")
             code = "\n\n# " + "="*50 + "\n\n".join(all_code_parts)
+            
+            # Generate tree structure from filenames if not provided by AI
+            if filenames:
+                file_hierarchy = "terraform-project/\n"
+                for i, filename in enumerate(filenames):
+                    if i == len(filenames) - 1:
+                        file_hierarchy += f"└── {filename}"
+                    else:
+                        file_hierarchy += f"├── {filename}\n"
         else:
             # Fallback to old single-file format
             code_start_tag = "```terraform"
@@ -175,7 +185,7 @@ Return the response in this EXACT format:
                     code_block_potential = parts[1]
                     if code_end_tag in code_block_potential:
                         code = code_block_potential.split(code_end_tag, 1)[0].strip()
-                        folder_structure["main.tf"] = code
+                        file_hierarchy = "terraform-project/\n└── main.tf"
         
         # Extract JSON metadata
         json_start_tag = "```json"
@@ -197,7 +207,7 @@ Return the response in this EXACT format:
             "explanation": metadata.get("explanation", "No explanation provided."),
             "resources": metadata.get("resources", []),
             "estimated_cost": metadata.get("estimated_cost", "Unknown"),
-            "folder_structure": folder_structure or metadata.get("folder_structure", {"main.tf": code})
+            "file_hierarchy": metadata.get("file_hierarchy", file_hierarchy)
         }
         
         response_cache[cache_key] = result.copy()  # Store a copy in cache
@@ -275,7 +285,7 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         provider=request.provider,
         generated_at=datetime.utcnow().isoformat(),
         cached_response=result.get("cached_response", False),  # Pass through cache status
-        folder_structure=result["folder_structure"]
+        file_hierarchy=result["file_hierarchy"]
     )
 
 # --- Health Check ---
