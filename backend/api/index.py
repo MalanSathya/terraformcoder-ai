@@ -48,6 +48,42 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Debug: Print the key type (remove in production)
+print(f"DEBUG: Using Supabase key starting with: {SUPABASE_KEY[:20]}...")
+print(f"DEBUG: Key length: {len(SUPABASE_KEY)}")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Add this to your create_user function to debug
+async def create_user(email: str, name: str, password: str):
+    """Create a new user in Supabase"""
+    try:
+        # Hash password
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        
+        # Debug: Print what we're trying to insert
+        user_data = {
+            "email": email.lower(),
+            "name": name,
+            "password_hash": password_hash
+        }
+        print(f"DEBUG: Attempting to insert user data: {user_data}")
+        
+        # Insert user into database
+        result = supabase.table("users").insert(user_data).execute()
+        
+        print(f"DEBUG: Insert result: {result}")
+        
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Database error creating user: {e}")
+        # Print more detailed error info
+        if hasattr(e, 'details'):
+            print(f"Error details: {e.details}")
+        return None
+
 # --- Mistral AI Client ---
 # Ensure you set MISTRAL_API_KEY in your environment variables
 mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
