@@ -218,7 +218,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials.")
 
 # --- Mistral AI Call ---
-async def call_ai_model(description: str, provider: str = "aws"):
+async def call_ai_model(description: str, provider: str):
     # Minor Feature: Simple caching based on description and provider
     cache_key = hashlib.sha256(f"{description}-{provider}".encode()).hexdigest()
     if cache_key in response_cache:
@@ -345,6 +345,9 @@ Return the response in this EXACT format:
     except Exception as e:
         # Minor Feature: Log the exact error for debugging
         print(f"ERROR: AI generation failed with Mistral AI: {e}")
+        print(f"ERROR TYPE: {type(e)}")
+        import traceback
+        print(f"TRACEBACK: {traceback.format_exc()}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"AI generation failed: {str(e)}")
 
 # --- Routes ---
