@@ -13,7 +13,8 @@ import jwt
 import httpx
 print("HTTPX VERSION:", httpx.__version__)
 from jwt.exceptions import PyJWTError
-from mistralai.client import MistralClient
+from mistralai import Mistral
+from mistralai.models import ChatMessage
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -49,7 +50,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- Mistral AI Client ---
 # Ensure you set MISTRAL_API_KEY in your environment variables
-mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
+mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
 MISTRAL_MODEL = "codestral-latest"  # Using the latest Codestral model
 
 # --- In-memory cache (consider Redis for production) ---
