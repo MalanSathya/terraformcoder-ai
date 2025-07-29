@@ -239,7 +239,7 @@ async def call_ai_model(description: str, provider: str):
         cached_data["cached_response"] = True
         return cached_data
     system_prompt = f"""
-You are a highly experienced DevOps and Cloud Infrastructure Engineer specialized in writing production-grade, modular, and cost-efficient Terraform code for the {provider} cloud provider.
+You are a highly experienced DevOps and Cloud Infrastructure Engineer specialized in writing production-grade, enterprise level modularity, and cost-efficient Terraform code for the {provider} cloud provider.
 
 Your task is to generate ONLY valid and deployment-ready Terraform code and include ansible playbooks according to the user's infrastructure description.
 
@@ -269,6 +269,8 @@ Your task is to generate ONLY valid and deployment-ready Terraform code and incl
 5. *Modular Approach*:
    - When applicable, recommend use of child modules (e.g., for compute, networking, databases).
    - Provide example module usage.
+   - Enterprise level modularity
+   - Conditionally generate the `module/` and `ansible/` folders only if the user's request warrants them — e.g., asking for automation tasks or reusable Terraform.
 
 6. *Comments and Clarity*:
    - Add meaningful inline comments explaining purpose of each block and resource.
@@ -281,6 +283,7 @@ Your task is to generate ONLY valid and deployment-ready Terraform code and incl
 
 8. *Output Formatting*:
    - Include any explanations or markdown **outside** the code blocks.
+   - Each block stays in its **own code fence** for parsing and visual clarity.
    - ALWAYS wrap each Terraform file in separate code blocks prefixed with its filename.
    - ALWAYS end the response with a structured JSON block providing metadata.
 
@@ -306,47 +309,37 @@ Return the response in this EXACT format:
 # Local variables for naming and tagging
 ```
 
- ```json
- {{
-  "explanation": "Concise summary of the infrastructure and choices made.",
-  "resources": ["azurerm_linux_virtual_machine", "azurerm_network_interface", "azurerm_virtual_network", "azurerm_network_security_group"],
+Optionally include the following files if the user request demands modular Terraform or Ansible automation:
+
+```terraform:module/
+# Terraform child modules organized per resource (e.g., compute, networking, storage)
+# Each module folder should contain main.tf, variables.tf, and outputs.tf
+```
+
+```terraform:ansible/
+# Ansible automation structure:
+# - roles/
+#     - <role_name>/
+#         - tasks/
+#         - handlers/
+#         - defaults/
+#         - vars/
+#         - meta/
+# - playbooks/
+#     - <use_case>.yml
+# Follow industry standard directory structure and YAML formatting.
+# Align with examples and patterns from this repo: https://github.com/MalanSathya/ansible_terraform_project
+```
+
+```json
+{{
+  "explanation": "This deployment includes modular Terraform and Ansible automation for provisioning and configuration.",
+  "resources": [ "azurerm_virtual_network","azurerm_linux_virtual_machine", "ansible_role_install_nginx"],
   "estimated_cost": "Low",
-  "file_hierarchy": "terraform-project/\\n├── main.tf\\n├── variables.tf\\n├── outputs.tf\\n├── terraform.tfvars.example\\n└── locals.tf"
+  "file_hierarchy": "terraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── module/\n│   ├── compute/\n│   ├── networking/\n└── ansible/\n    ├── roles/\n    │   └── install_nginx/\n    └── playbooks/\n        └── webserver.yml"
 }}
 ```
 """
-
-#     system_prompt = f"""
-# You are an expert in Terraform code generation, specifically for the {provider} cloud provider.
-# Your task is to generate ONLY the Terraform (.tf) code based on the user's request.
-# Follow these stringent rules:
-# - Ensure the generated code is valid Terraform syntax for {provider}.
-# - Include all necessary provider and resource blocks.
-# - Use meaningful comments within the Terraform code for clarity.
-# - Structure the code into logical files (main.tf, variables.tf, outputs.tf, etc.)
-# - DO NOT include ANY extra text outside of the code blocks.
-# - ALWAYS wrap each Terraform file in separate code blocks with filenames.
-# - ALWAYS provide structured metadata in a separate JSON block.
-# - The JSON block MUST contain 'explanation', 'resources' (a list of generated resource types), 'estimated_cost' (a simple string like "Low", "Medium", "High", or "Varies"), and 'file_hierarchy' (a tree-like string showing the project structure).
-
-# Return the response in this EXACT format:
-# ```terraform:main.tf
-# # Main terraform configuration
-# ```
-
-# ```terraform:variables.tf
-# # Variable definitions
-# ```
-
-# ```terraform:outputs.tf
-# # Output definitions
-# ```
-
-# ```json
-# {{"explanation": "...", "resources": ["..."], "estimated_cost": "...", "file_hierarchy": "terraform-project/\\n├── main.tf\\n├── variables.tf\\n├── outputs.tf\\n└── terraform.tfvars.example"}}
-# ```
-# """
-
     user_message = f"Generate Terraform code for {provider} to {description}."
 
     try:
@@ -397,20 +390,6 @@ Return the response in this EXACT format:
         
         # Process the response
         content = response.choices[0].message.content.strip()
-    # try:
-    #     # Create messages using plain dictionaries instead of ChatMessage objects
-    #     messages = [
-    #         {"role": "system", "content": system_prompt},
-    #         {"role": "user", "content": user_message}
-    #     ]
-        
-    #     response = mistral_client.chat(
-    #         model=MISTRAL_MODEL,
-    #         messages=messages,
-    #         temperature=0.7,
-    #         max_tokens=2048
-    #     )
-    #     content = response.choices[0].message.content.strip()
 
         code = ""
         metadata = {}
