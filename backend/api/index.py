@@ -336,7 +336,7 @@ Optionally include the following files if the user request demands modular Terra
   "explanation": "This deployment includes modular Terraform and Ansible automation for provisioning and configuration.",
   "resources": [ "azurerm_virtual_network","azurerm_linux_virtual_machine", "ansible_role_install_nginx"],
   "estimated_cost": "Low",
-  "file_hierarchy": "terraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── module/\n│   ├── compute/\n│   ├── networking/\n└── ansible/\n    ├── roles/\n    │   └── install_nginx/\n    └── playbooks/\n        └── webserver.yml"
+  "file_hierarchy": "terraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── module/\n├── compute/\n├── networking/\n├── ansible/\n├── roles/\n├── install_nginx/\n├──  playbooks/\n├──  webserver.yml"
 }}
 ```
 """
