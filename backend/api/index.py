@@ -13,7 +13,14 @@ import jwt
 import httpx
 print("HTTPX VERSION:", httpx.__version__)
 from jwt.exceptions import PyJWTError
-from mistralai import Mistral
+try:
+    from mistralai.client import MistralClient
+    from mistralai.models import ChatMessage
+    use_new_api = True
+except ImportError:
+    from mistralai import Mistral
+    use_new_api = False
+#from mistralai import Mistral
 # Removed the unused ChatMessage import
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -86,7 +93,12 @@ async def create_user(email: str, name: str, password: str):
 
 # --- Mistral AI Client ---
 # Ensure you set MISTRAL_API_KEY in your environment variables
-mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
+#mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
+# Update your client initialization:
+if use_new_api:
+    mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
+else:
+    mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
 MISTRAL_MODEL = "codestral-latest"  # Using the latest Codestral model
 
 # --- In-memory cache (consider Redis for production) ---
@@ -261,19 +273,67 @@ Return the response in this EXACT format:
     user_message = f"Generate Terraform code for {provider} to {description}."
 
     try:
-        # Create messages using plain dictionaries instead of ChatMessage objects
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+        if use_new_api:
+            # New API approach
+            messages = [
+                ChatMessage(role="system", content=system_prompt),
+                ChatMessage(role="user", content=user_message)
+            ]
+            
+            response = mistral_client.chat(
+                model=MISTRAL_MODEL,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048
+            )
+        else:
+            # Original API approach - try different methods
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            
+            # Try multiple possible method names
+            try:
+                response = mistral_client.chat.complete(
+                    model=MISTRAL_MODEL,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=2048
+                )
+            except AttributeError:
+                try:
+                    response = mistral_client.chat_completion(
+                        model=MISTRAL_MODEL,
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=2048
+                    )
+                except AttributeError:
+                    # Last resort - direct method call
+                    response = mistral_client.completions.create(
+                        model=MISTRAL_MODEL,
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=2048
+                    )
         
-        response = mistral_client.chat(
-            model=MISTRAL_MODEL,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=2048
-        )
+        # Process the response
         content = response.choices[0].message.content.strip()
+    # try:
+    #     # Create messages using plain dictionaries instead of ChatMessage objects
+    #     messages = [
+    #         {"role": "system", "content": system_prompt},
+    #         {"role": "user", "content": user_message}
+    #     ]
+        
+    #     response = mistral_client.chat(
+    #         model=MISTRAL_MODEL,
+    #         messages=messages,
+    #         temperature=0.7,
+    #         max_tokens=2048
+    #     )
+    #     content = response.choices[0].message.content.strip()
 
         code = ""
         metadata = {}

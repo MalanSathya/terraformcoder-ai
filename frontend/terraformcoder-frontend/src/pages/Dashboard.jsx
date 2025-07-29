@@ -84,7 +84,7 @@ const Dashboard = () => {
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full p-4 rounded-xl bg-slate-800/50 backdrop-blur-sm text-white border border-slate-700/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all duration-300 placeholder-slate-400 resize-none"
                 rows={5}
-                placeholder="Describe your infrastructure needs... (e.g., 'Create an EC2 instance with load balancer and RDS database')"
+                placeholder="Describe your infrastructure needs... (e.g., 'Generate Terraform code for AWS to create an EC2 with load balancer and RDS database.')"
               />
               <div className="absolute bottom-3 right-3 text-xs text-slate-500">
                 {description.length}/1000
