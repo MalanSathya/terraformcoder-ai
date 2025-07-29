@@ -14,7 +14,7 @@ import httpx
 print("HTTPX VERSION:", httpx.__version__)
 from jwt.exceptions import PyJWTError
 from mistralai import Mistral
-from mistralai.models import ChatMessage
+from mistralai import ChatMessage
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
