@@ -14,7 +14,7 @@ import httpx
 print("HTTPX VERSION:", httpx.__version__)
 from jwt.exceptions import PyJWTError
 from mistralai import Mistral
-from mistralai import ChatMessage
+# Removed the unused ChatMessage import
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -158,6 +158,7 @@ async def get_user_generations(user_id: str, limit: int = 10):
     except Exception as e:
         print(f"Database error getting generations: {e}")
         return []
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
@@ -224,6 +225,7 @@ Return the response in this EXACT format:
     user_message = f"Generate Terraform code for {provider} to {description}."
 
     try:
+        # Create messages using plain dictionaries instead of ChatMessage objects
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
