@@ -1,6 +1,6 @@
 // components/InvalidRequestCard.jsx
 import React from 'react';
-import { ExclamationTriangleIcon } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import GlassCard from './GlassCard';
 
 const InvalidRequestCard = ({ message }) => {
@@ -18,7 +18,7 @@ const InvalidRequestCard = ({ message }) => {
     <GlassCard className="animate-in slide-in-from-bottom-4 duration-700">
       <div className="flex items-center space-x-4 mb-4">
         <div className="w-12 h-12 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-lg flex items-center justify-center shadow-lg">
-          <ExclamationTriangleIcon className="w-6 h-6 text-white" />
+          <AlertTriangle className="w-6 h-6 text-white" />
         </div>
         <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
           Invalid Request
