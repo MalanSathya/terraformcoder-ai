@@ -1,10 +1,10 @@
 import axios from 'axios';
 
 // API Base URL - Update this to match your backend deployment
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://terraformcoder-ai-dev.up.railway.app';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://terraformcoder-ai-dev.up.railway.app';
 
-export const register = async (data) => axios.post(`${API_URL}/api/auth/register`, data);
-export const login = async (data) => axios.post(`${API_URL}/api/auth/login`, data);
+export const register = async (data) => axios.post(`${API_BASE_URL}/api/auth/register`, data);
+export const login = async (data) => axios.post(`${API_BASE_URL}/api/auth/login`, data);
 
 // Create axios instance with default config
 const api = axios.create({
@@ -95,7 +95,7 @@ export const authAPI = {
 // };
 
 export const generateCode = async (description, provider, token) =>
-  axios.post(`${API_URL}/api/generate`, { description, provider }, {
+  axios.post(`${API_BASE_URL}/api/generate`, { description, provider }, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -284,11 +284,11 @@ export default api;
 
 // import axios from 'axios';
 
-// const API_URL = process.env.REACT_APP_API_URL || 'https://terraformcoder-ai-dev.up.railway.app';
+// const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://terraformcoder-ai-dev.up.railway.app';
 
-// export const register = async (data) => axios.post(`${API_URL}/api/auth/register`, data);
-// export const login = async (data) => axios.post(`${API_URL}/api/auth/login`, data);
+// export const register = async (data) => axios.post(`${API_BASE_URL}/api/auth/register`, data);
+// export const login = async (data) => axios.post(`${API_BASE_URL}/api/auth/login`, data);
 // export const generateCode = async (description, provider, token) =>
-//   axios.post(`${API_URL}/api/generate`, { description, provider }, {
+//   axios.post(`${API_BASE_URL}/api/generate`, { description, provider }, {
 //     headers: { Authorization: `Bearer ${token}` }
 //   });
