@@ -70,29 +70,35 @@ export const authAPI = {
 };
 
 // Generate Terraform code
-export const generateCode = async (description, provider = 'aws', token = null) => {
-  try {
-    const config = {
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    };
+// export const generateCode = async (description, provider = 'aws', token = null) => {
+//   try {
+//     const config = {
+//       headers: {
+//         'Content-Type': 'application/json',
+//       }
+//     };
     
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+//     if (token) {
+//       config.headers.Authorization = `Bearer ${token}`;
+//     }
 
-    const response = await api.post('/api/generate', {
-      description,
-      provider
-    }, config);
+//     const response = await api.post('/api/generate', {
+//       description,
+//       provider
+//     }, config);
 
-    return response;
-  } catch (error) {
-    console.error('Error generating code:', error);
-    throw error;
-  }
-};
+//     return response;
+//   } catch (error) {
+//     console.error('Error generating code:', error);
+//     throw error;
+//   }
+// };
+
+export const generateCode = async (description, provider, token) =>
+  axios.post(`${API_URL}/api/generate`, { description, provider }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
 
 // Get user's generation history
 export const getGenerationHistory = async (limit = 10) => {
