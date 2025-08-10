@@ -99,24 +99,24 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
     }
   };
 
-  // Component icons mapping
-  const getComponentIcon = (component) => {
-    const componentLower = component.toLowerCase();
-    if (componentLower.includes('compute') || componentLower.includes('instance')) {
-      return '🖥️';
-    } else if (componentLower.includes('network') || componentLower.includes('vpc')) {
-      return '🌐';
-    } else if (componentLower.includes('database')) {
-      return '🗄️';
-    } else if (componentLower.includes('load balancer')) {
-      return '⚖️';
-    } else if (componentLower.includes('storage')) {
-      return '💾';
-    } else if (componentLower.includes('security')) {
-      return '🛡️';
-    }
-    return '🔧';
-  };
+  // // Component icons mapping
+  // const getComponentIcon = (component) => {
+  //   const componentLower = component.toLowerCase();
+  //   if (componentLower.includes('compute') || componentLower.includes('instance')) {
+  //     return '🖥️';
+  //   } else if (componentLower.includes('network') || componentLower.includes('vpc')) {
+  //     return '🌐';
+  //   } else if (componentLower.includes('database')) {
+  //     return '🗄️';
+  //   } else if (componentLower.includes('load balancer')) {
+  //     return '⚖️';
+  //   } else if (componentLower.includes('storage')) {
+  //     return '💾';
+  //   } else if (componentLower.includes('security')) {
+  //     return '🛡️';
+  //   }
+  //   return '🔧';
+  // };
 
   const getConnectionColor = (type) => {
     switch (type) {
