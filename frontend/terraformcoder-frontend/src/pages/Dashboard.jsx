@@ -13,11 +13,11 @@ import InvalidRequestCard from '../components/InvalidRequestCard';
 
 // Icons from Lucide
 import {
-  LogOutIcon,
-  BoltIcon,
-  ArrowRightIcon,
+  LogOut,
+  Bolt,
+  ArrowRight,
   Loader,
-  RocketIcon,
+  Rocket,
   CheckCircle2,
   Copy,
   BrainCircuit,
@@ -28,9 +28,9 @@ import {
   Server,
   AlertTriangle,
   Clipboard,
-  ZapIcon,
-  SparklesIcon,
-  FileTextIcon,
+  Zap,
+  Sparkles,
+  FileText,
   Eye
 } from 'lucide-react';
 
@@ -127,7 +127,7 @@ const EnhancedDashboard = () => {
           <div className="grid md:grid-cols-3 gap-4">
             <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
               <div className="flex items-center space-x-2 mb-2">
-                <FileTextIcon className="w-4 h-4 text-emerald-400" />
+                <FileText className="w-4 h-4 text-emerald-400" />
                 <h4 className="font-semibold text-slate-200 text-sm">Files Generated</h4>
               </div>
               <p className="text-2xl font-bold text-emerald-400">
