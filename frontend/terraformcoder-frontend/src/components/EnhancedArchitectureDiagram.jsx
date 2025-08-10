@@ -1,10 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import mermaid from 'mermaid';
 import { ChevronDownIcon, ChevronUpIcon, Eye, CloudIcon, NetworkIcon, ArrowRight } from 'lucide-react';
 import GlassCard from './GlassCard';
 import { API_BASE_URL } from '../services/api';
 
 const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, description }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const mermaidRef = useRef(null);
+
+  useEffect(() => {
+    if (architectureDiagram?.diagram_mermaid_syntax && mermaidRef.current) {
+      mermaid.initialize({ startOnLoad: false });
+      try {
+        mermaid.render('mermaid-diagram', architectureDiagram.diagram_mermaid_syntax).then(({ svg }) => {
+          if (mermaidRef.current) {
+            mermaidRef.current.innerHTML = svg;
+          }
+        });
+      } catch (error) {
+        console.error("Mermaid rendering failed:", error);
+        if (mermaidRef.current) {
+          mermaidRef.current.innerHTML = '<p class="text-red-400">Error rendering diagram.</p>';
+        }
+      }
+    }
+  }, [architectureDiagram?.diagram_mermaid_syntax]);
 
   // Component icons mapping
   const getComponentIcon = (component) => {
@@ -61,18 +81,16 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
         <div className="mt-6">
           {/* Diagram Display Section */}
           <div className="p-6 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30 mb-6">
-            {architectureDiagram?.diagram_url ? (
-              <img 
-                src={`${API_BASE_URL}${architectureDiagram.diagram_url}`} 
-                alt="Infrastructure Architecture Diagram" 
-                className="w-full h-auto rounded-lg border border-slate-600"
-              />
+            {architectureDiagram?.diagram_mermaid_syntax ? (
+              <div ref={mermaidRef} className="mermaid-diagram-container text-slate-300 flex justify-center items-center min-h-[200px]">
+                {/* Mermaid diagram will be rendered here */}
+              </div>
             ) : (
               <div className="flex items-center justify-center min-h-[300px] border-2 border-dashed border-slate-600 rounded-lg">
                 <div className="text-center">
                   <CloudIcon className="w-16 h-16 text-slate-500 mx-auto mb-4" />
                   <p className="text-slate-400 text-lg font-medium">Architecture Diagram</p>
-                  <p className="text-slate-500 text-sm mt-2">No diagram generated.</p>
+                  <p className="text-slate-500 text-sm mt-2">No diagram generated or error rendering.</p>
                 </div>
               </div>
             )}

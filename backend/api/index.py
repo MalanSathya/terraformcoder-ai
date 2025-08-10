@@ -22,7 +22,7 @@ except ImportError:
     use_new_api = False
 from supabase import create_client, Client
 from dotenv import load_dotenv
-import graphviz
+
 import uuid
 
 # Load environment variables
@@ -79,7 +79,7 @@ class FileContent(BaseModel):
     category: str   # 'infrastructure', 'compute', 'network', 'database', 'automation'
 
 class ArchitectureDiagram(BaseModel):
-    diagram_url: Optional[str] = None
+    diagram_mermaid_syntax: Optional[str] = None
     diagram_description: str = ""
     components: List[str] = []
     connections: List[Dict[str, str]] = []
@@ -183,87 +183,64 @@ Keep the explanation concise but comprehensive (2-3 paragraphs).
         return f"Configuration file for {category} components. Contains essential infrastructure definitions and settings."
 
 async def generate_architecture_diagram(description: str, resources: List[str], provider: str) -> ArchitectureDiagram:
-    """Generate architecture diagram using graphviz library"""
+    """Generate architecture diagram in Mermaid.js syntax"""
 
-    diagram_filename = f"architecture_{uuid.uuid4()}"
-    diagram_path = f"static/diagrams/{diagram_filename}"
-    os.makedirs("static/diagrams", exist_ok=True)
+    mermaid_syntax = ["graph TD"]
 
-    dot = graphviz.Digraph('CloudArchitecture', comment='Cloud Architecture Diagram')
-    dot.attr('graph', rankdir='TB', splines='ortho', nodesep='0.8', ranksep='1.2')
-    dot.attr('node', shape='box', style='rounded,filled', fillcolor='lightblue', fontname='Arial')
-    dot.attr('edge', fontname='Arial', fontsize='10')
-
-
-    # Provider-specific nodes
+    # Define nodes based on provider and resources
+    nodes = {}
     if provider == 'aws':
-        dot.node('lb', 'ELB', shape='doublecircle', fillcolor='orange')
-        dot.node('db', 'RDS', shape='cylinder', fillcolor='lightgrey')
-        dot.node('compute', 'EC2', shape='component', fillcolor='lightgreen')
+        nodes['lb'] = 'LB[AWS Load Balancer]'
+        nodes['db'] = 'DB[AWS RDS]'
+        nodes['compute'] = 'EC2[AWS EC2]'
     elif provider == 'azure':
-        dot.node('lb', 'Load Balancers', shape='doublecircle', fillcolor='orange')
-        dot.node('db', 'SQL Databases', shape='cylinder', fillcolor='lightgrey')
-        dot.node('compute', 'VM', shape='component', fillcolor='lightgreen')
+        nodes['lb'] = 'LB[Azure Load Balancer]'
+        nodes['db'] = 'DB[Azure SQL DB]'
+        nodes['compute'] = 'VM[Azure VM]'
     elif provider == 'gcp':
-        dot.node('lb', 'Load Balancing', shape='doublecircle', fillcolor='orange')
-        dot.node('db', 'SQL', shape='cylinder', fillcolor='lightgrey')
-        dot.node('compute', 'GCE', shape='component', fillcolor='lightgreen')
-    else: # Default to AWS
-        dot.node('lb', 'ELB', shape='doublecircle', fillcolor='orange')
-        dot.node('db', 'RDS', shape='cylinder', fillcolor='lightgrey')
-        dot.node('compute', 'EC2', shape='component', fillcolor='lightgreen')
+        nodes['lb'] = 'LB[GCP Load Balancing]'
+        nodes['db'] = 'DB[GCP Cloud SQL]'
+        nodes['compute'] = 'GCE[GCP Compute Engine]'
+    else: # Default to generic
+        nodes['lb'] = 'LB[Load Balancer]'
+        nodes['db'] = 'DB[Database]'
+        nodes['compute'] = 'Compute[Compute Instance]'
 
-    # Connect nodes based on resources
+    for key, value in nodes.items():
+        mermaid_syntax.append(f"    {value}")
+
+    # Define connections based on resources
+    connections = []
     if any(r in str(resources).lower() for r in ['load_balancer', 'lb', 'elb', 'alb']):
         if any(r in str(resources).lower() for r in ['instance', 'vm', 'ec2']):
-            dot.edge('lb', 'compute', label='traffic')
-        if any(r in str(resources).lower() for r in ['database', 'rds', 'sql']):
-            dot.edge('compute', 'db', label='data')
-
-    try:
-        print(f"Attempting to render diagram to: {diagram_path}")
-        dot.render(diagram_path, format='png', cleanup=True)
-        print(f"Diagram rendered successfully to: {diagram_path}")
-        diagram_url = f"/static/diagrams/{diagram_filename}.png"
-
-        diagram_description = "This diagram shows the high-level architecture of the generated infrastructure."
-
-        components = []
-        for resource in resources:
-            if 'virtual_machine' in resource or 'instance' in resource:
-                components.append('Compute Instance')
-            elif 'network' in resource or 'vpc' in resource:
-                components.append('Virtual Network')
-            elif 'database' in resource or 'sql' in resource:
-                components.append('Database')
-            elif 'load_balancer' in resource:
-                components.append('Load Balancer')
-            elif 'storage' in resource or 's3' in resource:
-                components.append('Storage')
-        components = list(set(components))
-
-        connections = []
-        if 'Virtual Network' in components and 'Compute Instance' in components:
-            connections.append({"from": "Virtual Network", "to": "Compute Instance", "type": "network"})
-        if 'Compute Instance' in components and 'Database' in components:
-            connections.append({"from": "Compute Instance", "to": "Database", "type": "data"})
-        if 'Load Balancer' in components and 'Compute Instance' in components:
+            mermaid_syntax.append(f"    {list(nodes.values())[0]} --> {list(nodes.values())[2]}") # LB to Compute
             connections.append({"from": "Load Balancer", "to": "Compute Instance", "type": "traffic"})
+        if any(r in str(resources).lower() for r in ['database', 'rds', 'sql']):
+            mermaid_syntax.append(f"    {list(nodes.values())[2]} --> {list(nodes.values())[1]}") # Compute to DB
+            connections.append({"from": "Compute Instance", "to": "Database", "type": "data"})
 
-        return ArchitectureDiagram(
-            diagram_url=diagram_url,
-            diagram_description=diagram_description,
-            components=components,
-            connections=connections
-        )
+    diagram_description = "This diagram shows the high-level architecture of the generated infrastructure."
 
-    except Exception as e:
-        print(f"Error generating architecture diagram: {e}")
-        return ArchitectureDiagram(
-            diagram_description="Could not generate architecture diagram.",
-            components=[],
-            connections=[]
-        )
+    components = []
+    for resource in resources:
+        if 'virtual_machine' in resource or 'instance' in resource:
+            components.append('Compute Instance')
+        elif 'network' in resource or 'vpc' in resource:
+            components.append('Virtual Network')
+        elif 'database' in resource or 'sql' in resource:
+            components.append('Database')
+        elif 'load_balancer' in resource:
+            components.append('Load Balancer')
+        elif 'storage' in resource or 's3' in resource:
+            components.append('Storage')
+    components = list(set(components))
+
+    return ArchitectureDiagram(
+        diagram_mermaid_syntax="\n".join(mermaid_syntax),
+        diagram_description=diagram_description,
+        components=components,
+        connections=connections
+    )
 
 def parse_generated_files(content: str) -> List[Dict[str, str]]:
     """Parse generated content into individual files with enhanced detection"""
@@ -467,7 +444,8 @@ Optionally include additional files as needed:
   "explanation": "This deployment includes modular Terraform and Ansible automation for provisioning and configuration.",
   "resources": ["azurerm_virtual_network","azurerm_linux_virtual_machine", "ansible_role_install_nginx"],
   "estimated_cost": "Low",
-  "file_hierarchy": "Generate a file hierarchy for the generated code, similar to the output of the 'tree' command. Example:\nterraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── providers.tf\n├── ansible/\n└── playbook.yml"
+  "file_hierarchy": "Generate a file hierarchy for the generated code, similar to the output of the 'tree' command. Example:\nterraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── providers.tf\n├── ansible/\n└── playbook.yml",
+  "architecture_diagram_mermaid": "Generate a Mermaid.js diagram for the architecture. Example:\n```mermaid\ngraph TD\n    A[Client] --> B(Load Balancer)\n    B --> C{Server}\n    C --> D[Database]\n```
 }}
 """
 
@@ -534,7 +512,7 @@ Optionally include additional files as needed:
             "estimated_cost": metadata.get("estimated_cost", "Unknown"),
             "file_hierarchy": metadata.get("file_hierarchy", ""),
             "is_valid_request": True,
-            "architecture_diagram": architecture_diagram
+            "architecture_diagram": ArchitectureDiagram(diagram_mermaid_syntax=metadata.get("architecture_diagram_mermaid", ""), diagram_description=architecture_diagram.diagram_description if architecture_diagram else "")
         }
         
         response_cache[cache_key] = result.copy()

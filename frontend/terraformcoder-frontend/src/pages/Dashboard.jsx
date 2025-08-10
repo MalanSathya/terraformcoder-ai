@@ -164,6 +164,25 @@ const EnhancedDashboard = () => {
           description={description}
         />
 
+        {/* File Hierarchy */}
+        {result.file_hierarchy ? (
+          <GlassCard>
+            <div className="flex items-center space-x-2 mb-3">
+              <Folder className="w-5 h-5 text-cyan-400" />
+              <h4 className="font-semibold text-slate-200">Project Structure</h4>
+            </div>
+            <pre className="text-slate-300 font-mono text-sm leading-relaxed whitespace-pre-wrap bg-slate-900/50 p-3 rounded-lg">
+              {result.file_hierarchy}
+            </pre>
+          </GlassCard>
+        ) : (
+          <GlassCard>
+            <div className="text-slate-500 text-sm">
+              File hierarchy could not be generated for this request.
+            </div>
+          </GlassCard>
+        )}
+
         {/* Dynamic File Renderer */}
         {result.files && result.files.length > 0 && (
           <GlassCard>
@@ -173,118 +192,6 @@ const EnhancedDashboard = () => {
             />
           </GlassCard>
         )}
-
-        {/* Multi-Cloud Code Display (Fallback) */}
-        {result.multi_cloud_code && (
-          <GlassCard>
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-lg flex items-center justify-center shadow-lg">
-                <Server className="w-5 h-5 text-white" />
-              </div>
-              <h3 className="text-xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                Multi-Cloud Implementation
-              </h3>
-            </div>
-            <MultiCloudTabs multiCloudCode={result.multi_cloud_code} onCopy={handleCopyToClipboard} />
-          </GlassCard>
-        )}
-
-        {/* Legacy Code Display (Fallback) */}
-        {result.code && !result.files && (
-          <GlassCard>
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-emerald-500 rounded-lg flex items-center justify-center shadow-lg">
-                <CheckCircle2 className="w-5 h-5 text-white" />
-              </div>
-              <h3 className="text-xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                Generated Code
-              </h3>
-            </div>
-            <div className="relative">
-              <pre className="bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 text-emerald-300 p-6 rounded-xl overflow-auto text-sm leading-relaxed shadow-inner max-h-[500px] font-mono">
-                <code>{result.code}</code>
-              </pre>
-              <button
-                onClick={() => handleCopyToClipboard(result.code)}
-                className="absolute top-4 right-4 p-2 bg-slate-800/80 hover:bg-slate-700/80 rounded-lg text-slate-400 hover:text-white transition-all duration-200"
-                title="Copy code"
-              >
-                <Clipboard className="w-4 h-4" />
-              </button>
-            </div>
-          </GlassCard>
-        )}
-
-        {/* Explanation & Additional Info */}
-        <div className="grid md:grid-cols-2 gap-6">
-          
-
-          <GlassCard>
-            <div className="space-y-4">
-              {/* File Hierarchy */}
-              {result.file_hierarchy ? (
-                <div>
-                  <div className="flex items-center space-x-2 mb-3">
-                    <Folder className="w-5 h-5 text-cyan-400" />
-                    <h4 className="font-semibold text-slate-200">Project Structure</h4>
-                  </div>
-                  <pre className="text-slate-300 font-mono text-sm leading-relaxed whitespace-pre-wrap bg-slate-900/50 p-3 rounded-lg">
-                    {result.file_hierarchy}
-                  </pre>
-                </div>
-              ) : (
-                <div className="text-slate-500 text-sm">
-                  File hierarchy could not be generated for this request.
-                </div>
-              )}
-
-              {/* Resources */}
-              {result.resources && result.resources.length > 0 && (
-                <div>
-                  <div className="flex items-center space-x-2 mb-3">
-                    <Layers className="w-5 h-5 text-emerald-400" />
-                    <h4 className="font-semibold text-slate-200">Infrastructure Resources</h4>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {result.resources.slice(0, 6).map((resource, index) => (
-                      <span key={index} className="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-xs font-medium border border-emerald-500/30">
-                        {resource}
-                      </span>
-                    ))}
-                    {result.resources.length > 6 && (
-                      <span className="px-3 py-1 bg-slate-500/20 text-slate-300 rounded-full text-xs font-medium border border-slate-500/30">
-                        +{result.resources.length - 6} more
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </GlassCard>
-        </div>
-
-        {/* File Explanations (Legacy Support) */}
-        <FileExplanations explanations={result.file_explanations} />
-        
-        {/* Generation Metadata */}
-        <GlassCard>
-          <div className="flex items-center justify-between text-sm text-slate-400">
-            <div className="flex items-center space-x-4">
-              <span className='flex items-center gap-2'>
-                <Clock className='w-4 h-4'/>
-                Generated on {new Date(result.generated_at).toLocaleString()}
-              </span>
-              <span className='flex items-center gap-2'>
-                <Server className='w-4 h-4'/>
-                Provider: {result.provider?.toUpperCase()}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Zap className="w-4 h-4 text-emerald-400" />
-              <span className="text-emerald-400 font-medium">AI-Enhanced Generation</span>
-            </div>
-          </div>
-        </GlassCard>
       </div>
     );
   };
@@ -307,7 +214,7 @@ const EnhancedDashboard = () => {
             <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
               AI Terraform Coder
             </h1>
-            <p className="text-sm text-slate-400">Neural-Enhanced Infrastructure Generation</p>
+            <p className="text-sm text-slate-400">Enhanced Infrastructure Generation</p>
           </div>
         </div>
 
@@ -335,7 +242,7 @@ const EnhancedDashboard = () => {
                 Welcome back, {user?.name || 'Developer'}
               </h2>
               <p className="text-slate-400 text-lg">
-                Describe your infrastructure needs for AI-powered code generation
+                Describe your infrastructure needs
               </p>
             </div>
           </div>
