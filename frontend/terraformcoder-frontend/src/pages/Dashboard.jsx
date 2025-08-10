@@ -391,7 +391,7 @@ const EnhancedDashboard = () => {
                       <>
                         <RocketIcon className="w-5 h-5" />
                         <span>Generate Infrastructure</span>
-                        <ArrowRightIcon className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
                       </>
                     )}
                   </span>
