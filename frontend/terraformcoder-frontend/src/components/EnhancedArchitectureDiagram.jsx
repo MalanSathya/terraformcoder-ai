@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDownIcon, ChevronUpIcon, EyeIcon, CloudIcon, NetworkIcon, ArrowRightIcon } from 'lucide-react';
 import GlassCard from './GlassCard';
+import { API_BASE_URL } from '../services/api';
 
 const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, description }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -62,7 +63,7 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
           <div className="p-6 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30 mb-6">
             {architectureDiagram?.diagram_url ? (
               <img 
-                src={`http://localhost:8000${architectureDiagram.diagram_url}`} 
+                src={`${API_BASE_URL}${architectureDiagram.diagram_url}`} 
                 alt="Infrastructure Architecture Diagram" 
                 className="w-full h-auto rounded-lg border border-slate-600"
               />
