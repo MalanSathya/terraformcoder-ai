@@ -327,7 +327,7 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
             </div>
           )}
 
-          {/* Mermaid Code Section */}
+          {/* Mermaid Code Section
           {architectureDiagram?.diagram_mermaid_syntax && (
             <div className="mt-6 p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
               <div className="flex items-center justify-between mb-3">
@@ -356,7 +356,7 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
                 {architectureDiagram.diagram_mermaid_syntax}
               </pre>
             </div>
-          )}
+          )} */}
 
           {/* Resource Summary */}
           {resources && resources.length > 0 && (
