@@ -77,7 +77,7 @@ const EnhancedDashboard = () => {
         <div className="flex flex-col items-center justify-center p-8 space-y-6">
           <div className="relative">
             <Loader className="w-16 h-16 animate-spin text-emerald-400" />
-            <SparklesIcon className="w-6 h-6 text-yellow-400 absolute top-5 left-5 animate-pulse" />
+            <Sparkles className="w-6 h-6 text-yellow-400 absolute top-5 left-5 animate-pulse" />
           </div>
           <div className="text-center space-y-2">
             <p className="text-slate-300 text-lg font-medium">AI is crafting your infrastructure code...</p>
@@ -282,7 +282,7 @@ const EnhancedDashboard = () => {
               </span>
             </div>
             <div className="flex items-center space-x-2">
-              <ZapIcon className="w-4 h-4 text-emerald-400" />
+              <Zap className="w-4 h-4 text-emerald-400" />
               <span className="text-emerald-400 font-medium">AI-Enhanced Generation</span>
             </div>
           </div>
@@ -303,7 +303,7 @@ const EnhancedDashboard = () => {
       <header className="relative z-10 flex items-center justify-between p-6">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg">
-            <BoltIcon className="w-6 h-6 text-white" />
+            <Bolt className="w-6 h-6 text-white" />
           </div>
           <div>
             <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
@@ -319,7 +319,7 @@ const EnhancedDashboard = () => {
         >
           <span className="flex items-center space-x-2">
             <span>Logout</span>
-            <LogOutIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
+            <LogOut className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
           </span>
         </button>
       </header>
@@ -389,7 +389,7 @@ const EnhancedDashboard = () => {
                       </>
                     ) : (
                       <>
-                        <RocketIcon className="w-5 h-5" />
+                        <Rocket className="w-5 h-5" />
                         <span>Generate Infrastructure</span>
                         <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
                       </>

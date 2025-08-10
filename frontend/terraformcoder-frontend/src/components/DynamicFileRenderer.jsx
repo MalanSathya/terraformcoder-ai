@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDownIcon, ChevronUpIcon, Copy, FileTextIcon, FolderIcon, CodeIcon, PlayIcon, ServerIcon, DatabaseIcon, NetworkIcon, CogIcon } from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon, Copy, FileText, FolderIcon, CodeIcon, PlayIcon, ServerIcon, DatabaseIcon, NetworkIcon, CogIcon } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import GlassCard from './GlassCard';
@@ -39,7 +39,7 @@ const DynamicFileRenderer = ({ files, onCopy }) => {
     } else if (fileType === 'ansible') {
       return PlayIcon;
     }
-    return FileTextIcon;
+    return FileText;
   };
 
   const getFileTypeColor = (fileType, category) => {

@@ -1,6 +1,6 @@
 // components/FileExplanations.jsx
 import React, { useState } from 'react';
-import { ChevronDownIcon, ChevronUpIcon, InfoIcon, FolderIcon, FileTextIcon } from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon, InfoIcon, FolderIcon, FileText } from 'lucide-react';
 import GlassCard from './GlassCard';
 
 const FileExplanations = ({ explanations }) => {
@@ -38,7 +38,7 @@ const FileExplanations = ({ explanations }) => {
                 {fileName.includes('/') ? (
                   <FolderIcon className="w-4 h-4 text-blue-400" />
                 ) : (
-                  <FileTextIcon className="w-4 h-4 text-green-400" />
+                  <FileText className="w-4 h-4 text-green-400" />
                 )}
                 <h4 className="font-semibold text-slate-200 font-mono text-sm">{fileName}</h4>
               </div>
