@@ -16,7 +16,7 @@ import {
   LogOutIcon,
   BoltIcon,
   ArrowRightIcon,
-  LoaderCircle,
+  Loader,
   RocketIcon,
   CheckCircle2,
   Copy,
@@ -76,7 +76,7 @@ const EnhancedDashboard = () => {
       <GlassCard>
         <div className="flex flex-col items-center justify-center p-8 space-y-6">
           <div className="relative">
-            <LoaderCircle className="w-16 h-16 animate-spin text-emerald-400" />
+            <Loader className="w-16 h-16 animate-spin text-emerald-400" />
             <SparklesIcon className="w-6 h-6 text-yellow-400 absolute top-5 left-5 animate-pulse" />
           </div>
           <div className="text-center space-y-2">
@@ -384,7 +384,7 @@ const EnhancedDashboard = () => {
                   <span className="flex items-center justify-center space-x-3">
                     {isGenerating ? (
                       <>
-                        <LoaderCircle className="animate-spin w-5 h-5" />
+                        <Loader className="animate-spin w-5 h-5" />
                         <span>Processing...</span>
                       </>
                     ) : (
