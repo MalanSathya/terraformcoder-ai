@@ -9,6 +9,9 @@ export const login = async (data) => axios.post(`${API_BASE_URL}/api/auth/login`
 // Create axios instance with default config
 const api = axios.create({
   baseURL: API_BASE_URL,
+
+  timeout: 30000, // Increased timeout for AI processing
+
   headers: {
     'Content-Type': 'application/json',
   },
@@ -70,34 +73,21 @@ export const authAPI = {
 };
 
 // Generate Terraform code
-// export const generateCode = async (description, provider = 'aws', token = null) => {
-//   try {
-//     const config = {
-//       headers: {
-//         'Content-Type': 'application/json',
-//       }
-//     };
-    
-//     if (token) {
-//       config.headers.Authorization = `Bearer ${token}`;
-//     }
+// export const generateCode = async (description, provider, token) =>
+//   axios.post(`${API_BASE_URL}/api/generate`, { description, provider }, {
+//     headers: { Authorization: `Bearer ${token}` }
+//   });
 
-//     const response = await api.post('/api/generate', {
-//       description,
-//       provider
-//     }, config);
-
-//     return response;
-//   } catch (error) {
-//     console.error('Error generating code:', error);
-//     throw error;
-//   }
-// };
-
-export const generateCode = async (description, provider, token) =>
-  axios.post(`${API_BASE_URL}/api/generate`, { description, provider }, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+// Enhanced code generation service
+export const generateCode = (description, provider = 'aws', token = null, includeDiagram = true) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  
+  return api.post('/api/generate', {
+    description,
+    provider,
+    include_diagram: includeDiagram
+  }, { headers });
+};
 
 
 // Get user's generation history
@@ -111,26 +101,36 @@ export const getGenerationHistory = async (limit = 10) => {
   }
 };
 
-// Generate architecture diagram (placeholder for future implementation)
-export const generateArchitectureDiagram = async (description, resources) => {
-  try {
-    // This is a placeholder - you'll need to integrate with a diagram service
-    // like Phind.com API or create your own diagram generation logic
-    
-    // For now, return a mock response
-    return {
-      data: {
-        diagram_url: null,
-        diagram_data: null,
-        success: false,
-        message: 'Diagram generation coming soon'
-      }
-    };
-  } catch (error) {
-    console.error('Error generating diagram:', error);
-    throw error;
-  }
+// Diagram generation service (for future Phind integration)
+export const generateDiagram = (description, resources) => {
+  return api.post('/api/generate-diagram', {
+    description,
+    resources
+  });
 };
+
+
+
+// // Generate architecture diagram (placeholder for future implementation)
+// export const generateArchitectureDiagram = async (description, resources) => {
+//   try {
+//     // This is a placeholder - you'll need to integrate with a diagram service
+//     // like Phind.com API or create your own diagram generation logic
+    
+//     // For now, return a mock response
+//     return {
+//       data: {
+//         diagram_url: null,
+//         diagram_data: null,
+//         success: false,
+//         message: 'Diagram generation coming soon'
+//       }
+//     };
+//   } catch (error) {
+//     console.error('Error generating diagram:', error);
+//     throw error;
+//   }
+// };
 
 // Health check
 export const healthCheck = async () => {

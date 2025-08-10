@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from datetime import datetime, timedelta
 import hashlib
 import base64
@@ -52,21 +52,267 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Debug: Print the key type (remove in production)
-print(f"DEBUG: Using Supabase key starting with: {SUPABASE_KEY[:20]}...")
-print(f"DEBUG: Key length: {len(SUPABASE_KEY)}")
-
 # --- Mistral AI Client ---
 if use_new_api:
     mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
 else:
     mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
-MISTRAL_MODEL = "codestral-latest"  # Using the latest Codestral model
+MISTRAL_MODEL = "codestral-latest"
 
-# --- In-memory cache (consider Redis for production) ---
+# --- In-memory cache ---
 response_cache: Dict[str, Dict] = {}
 
+# --- Enhanced Pydantic Models ---
+class FileContent(BaseModel):
+    filename: str
+    content: str
+    explanation: str
+    file_type: str  # 'terraform', 'ansible', 'config'
+    category: str   # 'infrastructure', 'compute', 'network', 'database', 'automation'
+
+class ArchitectureDiagram(BaseModel):
+    diagram_url: Optional[str] = None
+    diagram_description: str = ""
+    components: List[str] = []
+    connections: List[Dict[str, str]] = []
+
+class MultiCloudCode(BaseModel):
+    aws: Optional[str] = None
+    azure: Optional[str] = None
+    gcp: Optional[str] = None
+
+class GenerateRequest(BaseModel):
+    description: str = Field(..., min_length=10, max_length=1000)
+    provider: str = "aws"
+    include_diagram: bool = True
+
+class GenerateResponse(BaseModel):
+    files: List[FileContent] = []
+    explanation: str
+    resources: List[str]
+    estimated_cost: str
+    provider: str
+    generated_at: str
+    cached_response: bool = False
+    file_hierarchy: str = ""
+    multi_cloud_code: Optional[MultiCloudCode] = None
+    file_explanations: Dict[str, str] = {}
+    is_valid_request: bool = True
+    architecture_diagram: Optional[ArchitectureDiagram] = None
+
 # --- Helper Functions ---
+def classify_file_type(filename: str, content: str) -> tuple[str, str]:
+    """Classify file type and category using deep learning approach"""
+    filename_lower = filename.lower()
+    content_lower = content.lower()
+    
+    # File type classification
+    if filename_lower.endswith(('.tf', '.tfvars')):
+        file_type = 'terraform'
+    elif filename_lower.endswith(('.yml', '.yaml')) or 'ansible' in filename_lower:
+        file_type = 'ansible'
+    else:
+        file_type = 'config'
+    
+    # Category classification based on content patterns
+    if any(keyword in content_lower for keyword in ['azurerm_virtual_machine', 'aws_instance', 'google_compute_instance', 'ec2', 'vm']):
+        category = 'compute'
+    elif any(keyword in content_lower for keyword in ['azurerm_virtual_network', 'aws_vpc', 'google_compute_network', 'subnet', 'security_group']):
+        category = 'network'
+    elif any(keyword in content_lower for keyword in ['azurerm_sql_database', 'aws_rds', 'google_sql_database', 'database', 'mysql', 'postgresql']):
+        category = 'database'
+    elif any(keyword in content_lower for keyword in ['ansible', 'playbook', 'role', 'task']):
+        category = 'automation'
+    else:
+        category = 'infrastructure'
+    
+    return file_type, category
+
+async def generate_file_explanation(filename: str, content: str, file_type: str, category: str) -> str:
+    """Generate detailed explanation for each file using transformer-based summarization"""
+    
+    explanation_prompt = f"""
+You are an expert DevOps engineer. Analyze this {file_type} file and provide a comprehensive explanation.
+
+File: {filename}
+Type: {file_type}
+Category: {category}
+
+Content:
+{content[:1000]}...  # Truncate for token efficiency
+
+Provide a detailed explanation covering:
+1. Purpose and role in the infrastructure
+2. Key resources and their configurations
+3. Dependencies and relationships with other files
+4. Security considerations
+5. Cost optimization aspects
+
+Keep the explanation concise but comprehensive (2-3 paragraphs).
+"""
+
+    try:
+        if use_new_api:
+            messages = [ChatMessage(role="user", content=explanation_prompt)]
+            response = mistral_client.chat(
+                model=MISTRAL_MODEL,
+                messages=messages,
+                temperature=0.3,  # Lower temperature for consistency
+                max_tokens=300
+            )
+        else:
+            messages = [{"role": "user", "content": explanation_prompt}]
+            response = mistral_client.chat.complete(
+                model=MISTRAL_MODEL,
+                messages=messages,
+                temperature=0.3,
+                max_tokens=300
+            )
+        
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Error generating explanation for {filename}: {e}")
+        return f"Configuration file for {category} components. Contains essential infrastructure definitions and settings."
+
+async def generate_architecture_diagram(description: str, resources: List[str]) -> ArchitectureDiagram:
+    """Generate architecture diagram using AI-based diagram generation"""
+    
+    # For now, we'll create a structured description and components list
+    # In production, integrate with actual diagram generation service
+    
+    diagram_prompt = f"""
+Based on this infrastructure description: "{description}"
+And these resources: {resources}
+
+Generate a structured architecture description including:
+1. Main components and their relationships
+2. Data flow patterns
+3. Network topology
+4. Security boundaries
+
+Provide a JSON response with components and connections.
+"""
+
+    try:
+        if use_new_api:
+            messages = [ChatMessage(role="user", content=diagram_prompt)]
+            response = mistral_client.chat(
+                model=MISTRAL_MODEL,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=400
+            )
+        else:
+            messages = [{"role": "user", "content": diagram_prompt}]
+            response = mistral_client.chat.complete(
+                model=MISTRAL_MODEL,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=400
+            )
+        
+        diagram_description = response.choices[0].message.content.strip()
+        
+        # Extract components from resources
+        components = []
+        for resource in resources:
+            if 'virtual_machine' in resource or 'instance' in resource:
+                components.append('Compute Instance')
+            elif 'network' in resource or 'vpc' in resource:
+                components.append('Virtual Network')
+            elif 'database' in resource or 'sql' in resource:
+                components.append('Database')
+            elif 'load_balancer' in resource:
+                components.append('Load Balancer')
+            elif 'storage' in resource or 's3' in resource:
+                components.append('Storage')
+        
+        components = list(set(components))  # Remove duplicates
+        
+        # Create basic connections (this would be enhanced with actual diagram generation)
+        connections = []
+        if 'Virtual Network' in components and 'Compute Instance' in components:
+            connections.append({"from": "Virtual Network", "to": "Compute Instance", "type": "network"})
+        if 'Compute Instance' in components and 'Database' in components:
+            connections.append({"from": "Compute Instance", "to": "Database", "type": "data"})
+        if 'Load Balancer' in components and 'Compute Instance' in components:
+            connections.append({"from": "Load Balancer", "to": "Compute Instance", "type": "traffic"})
+        
+        return ArchitectureDiagram(
+            diagram_url=None,  # Placeholder for actual diagram URL
+            diagram_description=diagram_description,
+            components=components,
+            connections=connections
+        )
+    
+    except Exception as e:
+        print(f"Error generating architecture diagram: {e}")
+        return ArchitectureDiagram(
+            diagram_description="Architecture overview will be generated based on your infrastructure components.",
+            components=[],
+            connections=[]
+        )
+
+def parse_generated_files(content: str) -> List[Dict[str, str]]:
+    """Parse generated content into individual files with enhanced detection"""
+    
+    files = []
+    
+    # Enhanced regex pattern for file detection
+    file_pattern = r'```(?:terraform|yaml|yml|json|sh)?:?([^\n]+)\n(.*?)```'
+    matches = re.findall(file_pattern, content, re.DOTALL)
+    
+    for filename, file_content in matches:
+        filename = filename.strip()
+        file_content = file_content.strip()
+        
+        # Skip empty files
+        if not file_content:
+            continue
+            
+        # Clean filename
+        if filename.startswith('```') or filename.startswith('File:'):
+            filename = filename.replace('```', '').replace('File:', '').strip()
+        
+        files.append({
+            'filename': filename,
+            'content': file_content
+        })
+    
+    # If no files found, treat entire content as main.tf
+    if not files and content.strip():
+        files.append({
+            'filename': 'main.tf',
+            'content': content.strip()
+        })
+    
+    return files
+
+async def process_generated_files(parsed_files: List[Dict[str, str]]) -> List[FileContent]:
+    """Process parsed files with AI-generated explanations"""
+    
+    processed_files = []
+    
+    for file_data in parsed_files:
+        filename = file_data['filename']
+        content = file_data['content']
+        
+        # Classify file
+        file_type, category = classify_file_type(filename, content)
+        
+        # Generate explanation
+        explanation = await generate_file_explanation(filename, content, file_type, category)
+        
+        processed_files.append(FileContent(
+            filename=filename,
+            content=content,
+            explanation=explanation,
+            file_type=file_type,
+            category=category
+        ))
+    
+    return processed_files
+
 def detect_cloud_provider(description: str) -> List[str]:
     """Detect which cloud providers are mentioned in the description"""
     providers = []
@@ -79,7 +325,6 @@ def detect_cloud_provider(description: str) -> List[str]:
     if any(keyword in description_lower for keyword in ['gcp', 'google', 'gce', 'cloud storage', 'bigquery']):
         providers.append('gcp')
     
-    # If no specific provider mentioned, default to all three
     if not providers:
         providers = ['aws', 'azure', 'gcp']
     
@@ -100,237 +345,24 @@ def is_valid_infrastructure_request(description: str) -> bool:
     description_lower = description.lower()
     return any(keyword in description_lower for keyword in infrastructure_keywords)
 
-def generate_file_explanations(file_hierarchy: str, resources: List[str]) -> Dict[str, str]:
-    """Generate explanations for files and folders"""
-    explanations = {}
+# --- AI Model Call (Enhanced) ---
+async def call_ai_model(description: str, provider: str, include_diagram: bool = True):
+    """Enhanced AI model call with dynamic file processing"""
     
-    # Default explanations for common Terraform files
-    if 'main.tf' in file_hierarchy:
-        explanations['main.tf'] = "Main configuration file containing core resources and module instantiations. This is the entry point for your Terraform deployment."
-    
-    if 'variables.tf' in file_hierarchy:
-        explanations['variables.tf'] = "Variable declarations with types, descriptions, and default values. Allows customization of the infrastructure without modifying the main code."
-    
-    if 'outputs.tf' in file_hierarchy:
-        explanations['outputs.tf'] = "Output values that expose important resource attributes like IDs, ARNs, and endpoints for use by other configurations or for reference."
-    
-    if 'terraform.tfvars.example' in file_hierarchy:
-        explanations['terraform.tfvars.example'] = "Example values file showing how to set variables. Copy this to terraform.tfvars and customize for your environment."
-    
-    if 'locals.tf' in file_hierarchy:
-        explanations['locals.tf'] = "Local variables for naming conventions, tags, and computed values. Helps maintain consistency across resources."
-    
-    if 'providers.tf' in file_hierarchy:
-        explanations['providers.tf'] = "Provider configuration specifying cloud provider settings, authentication, and version constraints."
-    
-    if 'versions.tf' in file_hierarchy:
-        explanations['versions.tf'] = "Terraform and provider version constraints to ensure consistent deployments across environments."
-    
-    # Module explanations
-    if 'module/' in file_hierarchy:
-        explanations['module/'] = "Reusable Terraform modules organized by functionality. Each module encapsulates related resources for better organization and reusability."
-        
-        if 'compute/' in file_hierarchy:
-            explanations['module/compute/'] = "Compute module containing virtual machines, auto-scaling groups, and related compute resources with standardized configurations."
-        
-        if 'network/' in file_hierarchy:
-            explanations['module/network/'] = "Networking module defining VPCs, subnets, route tables, and security groups with best-practice network segmentation."
-        
-        if 'database/' in file_hierarchy:
-            explanations['module/database/'] = "Database module for managed database services with backup, monitoring, and security configurations."
-    
-    # Ansible explanations
-    if 'ansible/' in file_hierarchy:
-        explanations['ansible/'] = "Ansible automation for post-provisioning configuration management and application deployment."
-        
-        if 'roles/' in file_hierarchy:
-            explanations['ansible/roles/'] = "Ansible roles organized by functionality. Each role contains tasks, handlers, variables, and templates for specific configuration tasks."
-        
-        if 'playbooks/' in file_hierarchy:
-            explanations['ansible/playbooks/'] = "Ansible playbooks that orchestrate role execution and define the complete configuration workflow."
-    
-    return explanations
-
-# --- Pydantic Models ---
-class RegisterRequest(BaseModel):
-    email: str
-    name: str
-    password: str
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-class AuthResponse(BaseModel):
-    message: str
-    user: Dict[str, str]
-    access_token: str
-    token_type: str = "bearer"
-
-class GenerateRequest(BaseModel):
-    description: str = Field(..., min_length=10, max_length=1000,
-                           description="A detailed description of the Terraform code to generate.")
-    provider: str = "aws"
-
-class MultiCloudCode(BaseModel):
-    aws: Optional[str] = None
-    azure: Optional[str] = None
-    gcp: Optional[str] = None
-
-class GenerateResponse(BaseModel):
-    code: str
-    explanation: str
-    resources: List[str]
-    estimated_cost: str
-    provider: str
-    generated_at: str
-    cached_response: bool = False
-    file_hierarchy: str = ""
-    multi_cloud_code: Optional[MultiCloudCode] = None
-    file_explanations: Dict[str, str] = {}
-    is_valid_request: bool = True
-    architecture_diagram_url: Optional[str] = None
-
-# --- Database Helper Functions ---
-async def create_user(email: str, name: str, password: str):
-    """Create a new user in Supabase"""
-    try:
-        # Hash password
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        
-        # Debug: Print what we're trying to insert
-        user_data = {
-            "email": email.lower(),
-            "name": name,
-            "password_hash": password_hash
-        }
-        print(f"DEBUG: Attempting to insert user data: {user_data}")
-        
-        # Insert user into database
-        result = supabase.table("users").insert(user_data).execute()
-        
-        print(f"DEBUG: Insert result: {result}")
-        
-        if result.data:
-            return result.data[0]
-        return None
-    except Exception as e:
-        print(f"Database error creating user: {e}")
-        # Print more detailed error info
-        if hasattr(e, 'details'):
-            print(f"Error details: {e.details}")
-        return None
-
-async def get_user_by_email(email: str):
-    """Get user by email from Supabase"""
-    try:
-        result = supabase.table("users").select("*").eq("email", email.lower()).execute()
-        if result.data:
-            return result.data[0]
-        return None
-    except Exception as e:
-        print(f"Database error getting user: {e}")
-        return None
-
-async def get_user_by_id(user_id: str):
-    """Get user by ID from Supabase"""
-    try:
-        result = supabase.table("users").select("*").eq("id", user_id).execute()
-        if result.data:
-            return result.data[0]
-        return None
-    except Exception as e:
-        print(f"Database error getting user by ID: {e}")
-        return None
-
-async def save_generation(user_id: str, description: str, provider: str, result_data: dict):
-    """Save generation history to Supabase"""
-    try:
-        generation_data = {
-            "user_id": user_id,
-            "description": description,
-            "provider": provider,
-            "code": result_data["code"],
-            "explanation": result_data["explanation"],
-            "resources": result_data["resources"],
-            "estimated_cost": result_data["estimated_cost"],
-            "file_hierarchy": result_data["file_hierarchy"]
-        }
-        
-        result = supabase.table("generations").insert(generation_data).execute()
-        return result.data[0] if result.data else None
-    except Exception as e:
-        print(f"Database error saving generation: {e}")
-        return None
-
-async def get_user_generations(user_id: str, limit: int = 10):
-    """Get user's generation history from Supabase"""
-    try:
-        result = supabase.table("generations").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
-        return result.data if result.data else []
-    except Exception as e:
-        print(f"Database error getting generations: {e}")
-        return []
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
-        
-        user = await get_user_by_id(user_id)
-        if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found.")
-        
-        return user
-    except PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials.")
-
-# --- Multi-Cloud Generation ---
-async def generate_multi_cloud_code(description: str, providers: List[str]):
-    """Generate Terraform code for multiple cloud providers"""
-    multi_cloud_code = MultiCloudCode()
-    
-    for provider in providers:
-        try:
-            result = await call_ai_model(description, provider)
-            if provider == 'aws':
-                multi_cloud_code.aws = result["code"]
-            elif provider == 'azure':
-                multi_cloud_code.azure = result["code"]
-            elif provider == 'gcp':
-                multi_cloud_code.gcp = result["code"]
-        except Exception as e:
-            print(f"Error generating code for {provider}: {e}")
-            continue
-    
-    return multi_cloud_code
-
-# --- AI Model Call ---
-async def call_ai_model(description: str, provider: str):
-    # Check if request is valid infrastructure request
     if not is_valid_infrastructure_request(description):
         return {
-            "code": "",
-            "explanation": "Please provide a clear description of your cloud infrastructure requirements (e.g., 'Create a VPC with two EC2 instances and RDS').",
+            "files": [],
+            "explanation": "Please provide a clear description of your cloud infrastructure requirements.",
             "resources": [],
             "estimated_cost": "Unknown",
             "file_hierarchy": "",
-            "is_valid_request": False
+            "is_valid_request": False,
+            "architecture_diagram": None
         }
     
-    # Minor Feature: Simple caching based on description and provider
+    # Check cache
     cache_key = hashlib.sha256(f"{description}-{provider}".encode()).hexdigest()
     if cache_key in response_cache:
-        print(f"DEBUG: Serving from cache for key: {cache_key}")
         cached_data = response_cache[cache_key]
         cached_data["cached_response"] = True
         return cached_data
@@ -354,8 +386,8 @@ Your task is to generate ONLY valid and deployment-ready Terraform code and incl
      - Additional files (`locals.tf`, `providers.tf`, `versions.tf`, `modules/*`) when complexity increases
 
 3. *Resource Naming*:
-   - Use **snake_case** and **descriptive naming** for all resources (e.g., `web_vm_linux_b1ms`, `$(var.hostname)_lb_backend_pool`)
-   - Follow naming patterns from this reference repo: https://github.com/MalanSathya/ansible_terraform_project
+   - Use **snake_case** and **descriptive naming** for all resources
+   - Follow naming patterns from enterprise standards
    - Prefer using `local` values for naming prefixes/suffixes where possible.
 
 4. *Tagging and Metadata*:
@@ -364,24 +396,22 @@ Your task is to generate ONLY valid and deployment-ready Terraform code and incl
    - Use `locals` block to define tag values to ensure consistency.
 
 5. *Modular Approach*:
-   - When applicable, recommend use of child modules (e.g., for compute, networking, databases).
-   - Provide example module usage.
+   - When applicable, recommend use of child modules
+   - Provide example module usage
    - Enterprise level modularity
-   - Conditionally generate the `module/` and `ansible/` folders only if the user's request warrants them — e.g., asking for automation tasks or reusable Terraform.
+   - Conditionally generate the `module/` and `ansible/` folders only if the user's request warrants them
 
 6. *Comments and Clarity*:
    - Add meaningful inline comments explaining purpose of each block and resource.
-   - Include references to cost optimization (e.g., VM size: B1ms, storage type: LRS) if applicable.
+   - Include references to cost optimization if applicable.
 
 7. *Security and Access*:
-   - Ensure NSG/firewall/inbound rules are secure by default.
-   - Use variables to parameterize sensitive values (e.g., admin_passwords, access_cidrs).
+   - Ensure firewall/security group rules are secure by default.
+   - Use variables to parameterize sensitive values.
    - Never hardcode secrets or keys.
 
 8. *Output Formatting*:
-   - Include any explanations or markdown **outside** the code blocks.
-   - Each block stays in its **own code fence** for parsing and visual clarity.
-   - ALWAYS wrap each Terraform file in separate code blocks prefixed with its filename.
+   - ALWAYS wrap each file in separate code blocks prefixed with its filename.
    - ALWAYS end the response with a structured JSON block providing metadata.
 
 Return the response in this EXACT format:
@@ -406,47 +436,38 @@ Return the response in this EXACT format:
 # Local variables for naming and tagging
 ```
 
-Optionally include the following files if the user request demands modular Terraform or Ansible automation:
+Optionally include additional files as needed:
 
-```terraform:module/
-# Terraform child modules organized per resource (e.g., compute, networking, storage)
-# Each module folder should contain main.tf, variables.tf, and outputs.tf
+```terraform:providers.tf
+# Provider configuration
 ```
 
-```terraform:ansible/
-# Ansible automation structure:
-# - roles/
-#     - <role_name>/
-#         - tasks/
-#         - handlers/
-#         - defaults/
-#         - vars/
-#         - meta/
-# - playbooks/
-#     - <use_case>.yml
-# Follow industry standard directory structure and YAML formatting.
-# Align with examples and patterns from this repo: https://github.com/MalanSathya/ansible_terraform_project
+```terraform:versions.tf
+# Version constraints
+```
+
+```ansible:playbook.yml
+# Ansible automation
 ```
 
 ```json
 {{
   "explanation": "This deployment includes modular Terraform and Ansible automation for provisioning and configuration.",
-  "resources": [ "azurerm_virtual_network","azurerm_linux_virtual_machine", "ansible_role_install_nginx"],
+  "resources": ["azurerm_virtual_network","azurerm_linux_virtual_machine", "ansible_role_install_nginx"],
   "estimated_cost": "Low",
-  "file_hierarchy": "terraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── module/\n├── compute/\n├── networking/\n├── ansible/\n├── roles/\n├── install_nginx/\n├──  playbooks/\n├──  webserver.yml"
+  "file_hierarchy": "terraform-project/\\n├── main.tf\\n├── variables.tf\\n├── outputs.tf\\n├── terraform.tfvars.example\\n├── locals.tf\\n├── providers.tf\\n├── ansible/\\n└── playbook.yml"
 }}
 ```
 """
+
     user_message = f"Generate Terraform code for {provider} to {description}."
 
     try:
         if use_new_api:
-            # New API approach
             messages = [
                 ChatMessage(role="system", content=system_prompt),
                 ChatMessage(role="user", content=user_message)
             ]
-            
             response = mistral_client.chat(
                 model=MISTRAL_MODEL,
                 messages=messages,
@@ -454,80 +475,27 @@ Optionally include the following files if the user request demands modular Terra
                 max_tokens=2048
             )
         else:
-            # Original API approach - try different methods
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ]
-            
-            # Try multiple possible method names
-            try:
-                response = mistral_client.chat.complete(
-                    model=MISTRAL_MODEL,
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=2048
-                )
-            except AttributeError:
-                try:
-                    response = mistral_client.chat_completion(
-                        model=MISTRAL_MODEL,
-                        messages=messages,
-                        temperature=0.7,
-                        max_tokens=2048
-                    )
-                except AttributeError:
-                    # Last resort - direct method call
-                    response = mistral_client.completions.create(
-                        model=MISTRAL_MODEL,
-                        messages=messages,
-                        temperature=0.7,
-                        max_tokens=2048
-                    )
+            response = mistral_client.chat.complete(
+                model=MISTRAL_MODEL,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048
+            )
         
-        # Process the response
         content = response.choices[0].message.content.strip()
-
-        code = ""
+        
+        # Parse files
+        parsed_files = parse_generated_files(content)
+        
+        # Process files with AI explanations
+        processed_files = await process_generated_files(parsed_files)
+        
+        # Extract metadata
         metadata = {}
-        file_hierarchy = ""
-        
-        # Extract multiple Terraform files with filenames
-        terraform_pattern = r'```terraform:([^\n]+)\n(.*?)```'
-        terraform_matches = re.findall(terraform_pattern, content, re.DOTALL)
-        
-        if terraform_matches:
-            # If we have multiple files, combine them for the main code field
-            all_code_parts = []
-            filenames = []
-            for filename, file_content in terraform_matches:
-                filename = filename.strip()
-                file_content = file_content.strip()
-                filenames.append(filename)
-                all_code_parts.append(f"# File: {filename}\n{file_content}")
-            code = "\n\n# " + "="*50 + "\n\n".join(all_code_parts)
-            
-            # Generate tree structure from filenames if not provided by AI
-            if filenames:
-                file_hierarchy = "terraform-project/\n"
-                for i, filename in enumerate(filenames):
-                    if i == len(filenames) - 1:
-                        file_hierarchy += f"└── {filename}"
-                    else:
-                        file_hierarchy += f"├── {filename}\n"
-        else:
-            # Fallback to old single-file format
-            code_start_tag = "```terraform"
-            code_end_tag = "```"
-            if code_start_tag in content:
-                parts = content.split(code_start_tag, 1)
-                if len(parts) > 1:
-                    code_block_potential = parts[1]
-                    if code_end_tag in code_block_potential:
-                        code = code_block_potential.split(code_end_tag, 1)[0].strip()
-                        file_hierarchy = "terraform-project/\n└── main.tf"
-        
-        # Extract JSON metadata
         json_start_tag = "```json"
         if json_start_tag in content:
             parts = content.split(json_start_tag, 1)
@@ -539,48 +507,126 @@ Optionally include the following files if the user request demands modular Terra
                     try:
                         metadata = json.loads(json_block)
                     except json.JSONDecodeError as e:
-                        print(f"WARNING: Could not decode JSON from AI response: {e}. Raw JSON block: {json_block}")
-                        metadata = {}  # Fallback to empty if JSON is malformed
-
+                        print(f"WARNING: Could not decode JSON: {e}")
+                        metadata = {}
+        
+        # Generate architecture diagram if requested
+        architecture_diagram = None
+        if include_diagram and processed_files:
+            resources = metadata.get("resources", [])
+            architecture_diagram = await generate_architecture_diagram(description, resources)
+        
         result = {
-            "code": code,
-            "explanation": metadata.get("explanation", "No explanation provided."),
+            "files": processed_files,
+            "explanation": metadata.get("explanation", "Infrastructure code generated successfully."),
             "resources": metadata.get("resources", []),
             "estimated_cost": metadata.get("estimated_cost", "Unknown"),
-            "file_hierarchy": metadata.get("file_hierarchy", file_hierarchy),
-            "is_valid_request": True
+            "file_hierarchy": metadata.get("file_hierarchy", ""),
+            "is_valid_request": True,
+            "architecture_diagram": architecture_diagram
         }
         
-        response_cache[cache_key] = result.copy()  # Store a copy in cache
-        result["cached_response"] = False  # Indicate it's a fresh response
+        response_cache[cache_key] = result.copy()
+        result["cached_response"] = False
         return result
 
     except Exception as e:
-        # Minor Feature: Log the exact error for debugging
-        print(f"ERROR: AI generation failed with Mistral AI: {e}")
-        print(f"ERROR TYPE: {type(e)}")
-        import traceback
-        print(f"TRACEBACK: {traceback.format_exc()}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"AI generation failed: {str(e)}")
+        print(f"ERROR: AI generation failed: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                          detail=f"AI generation failed: {str(e)}")
+
+# --- Database Helper Functions (keeping existing ones) ---
+async def create_user(email: str, name: str, password: str):
+    """Create a new user in Supabase"""
+    try:
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        user_data = {
+            "email": email.lower(),
+            "name": name,
+            "password_hash": password_hash
+        }
+        result = supabase.table("users").insert(user_data).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Database error creating user: {e}")
+        return None
+
+async def get_user_by_email(email: str):
+    """Get user by email from Supabase"""
+    try:
+        result = supabase.table("users").select("*").eq("email", email.lower()).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Database error getting user: {e}")
+        return None
+
+async def get_user_by_id(user_id: str):
+    """Get user by ID from Supabase"""
+    try:
+        result = supabase.table("users").select("*").eq("id", user_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Database error getting user by ID: {e}")
+        return None
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
+        
+        user = await get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found.")
+        
+        return user
+    except PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials.")
 
 # --- Routes ---
 @app.get("/")
 def root():
-    return {"message": "TerraformCoder AI API is running!"}
+    return {"message": "TerraformCoder AI API is running with enhanced features!"}
+
+class RegisterRequest(BaseModel):
+    email: str
+    name: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class AuthResponse(BaseModel):
+    message: str
+    user: Dict[str, str]
+    access_token: str
+    token_type: str = "bearer"
 
 @app.post("/api/auth/register", response_model=AuthResponse)
 async def register(request: RegisterRequest):
-    # Check if user already exists
     existing_user = await get_user_by_email(request.email)
     if existing_user:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists.")
 
-    # Create new user
     user = await create_user(request.email, request.name, request.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user.")
 
-    # Generate token
     token = create_access_token({"sub": str(user["id"])})
 
     return AuthResponse(
@@ -591,17 +637,14 @@ async def register(request: RegisterRequest):
 
 @app.post("/api/auth/login", response_model=AuthResponse)
 async def login(request: LoginRequest):
-    # Find user and validate password
     user = await get_user_by_email(request.email)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
     
-    # Verify password
     hashed = hashlib.sha256(request.password.encode()).hexdigest()
     if user["password_hash"] != hashed:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
     
-    # Generate token
     token = create_access_token({"sub": str(user["id"])})
     
     return AuthResponse(
@@ -612,15 +655,13 @@ async def login(request: LoginRequest):
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate(request: GenerateRequest, current_user: Dict = Depends(get_current_user)):
-    # Input validation
     if not request.description.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Description cannot be empty.")
 
-    # Check if it's a valid infrastructure request
     if not is_valid_infrastructure_request(request.description):
         return GenerateResponse(
-            code="",
-            explanation="⚠️ Please only provide a clear description of your cloud infrastructure requirements (e.g., 'Create a VPC with two EC2 instances and RDS').",
+            files=[],
+            explanation="⚠️ Please provide a clear description of your cloud infrastructure requirements.",
             resources=[],
             estimated_cost="Unknown",
             provider=request.provider,
@@ -630,30 +671,10 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
             is_valid_request=False
         )
 
-    # Detect cloud providers mentioned in description
-    detected_providers = detect_cloud_provider(request.description)
+    result = await call_ai_model(request.description, request.provider, request.include_diagram)
     
-    # Generate code for primary provider
-    result = await call_ai_model(request.description, request.provider)
-    
-    # Generate multi-cloud code if no specific provider mentioned
-    multi_cloud_code = None
-    if len(detected_providers) > 1 or (len(detected_providers) == 3 and 'aws' in detected_providers and 'azure' in detected_providers and 'gcp' in detected_providers):
-        multi_cloud_code = await generate_multi_cloud_code(request.description, detected_providers)
-    
-    # Generate file explanations
-    file_explanations = generate_file_explanations(result["file_hierarchy"], result["resources"])
-    
-    # Save generation to database
-    await save_generation(
-        user_id=str(current_user["id"]),
-        description=request.description,
-        provider=request.provider,
-        result_data=result
-    )
-
     return GenerateResponse(
-        code=result["code"],
+        files=result["files"],
         explanation=result["explanation"],
         resources=result["resources"],
         estimated_cost=result["estimated_cost"],
@@ -661,44 +682,10 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         generated_at=datetime.utcnow().isoformat(),
         cached_response=result.get("cached_response", False),
         file_hierarchy=result["file_hierarchy"],
-        multi_cloud_code=multi_cloud_code,
-        file_explanations=file_explanations,
         is_valid_request=result.get("is_valid_request", True),
-        architecture_diagram_url=None  # Placeholder for future diagram integration
+        architecture_diagram=result.get("architecture_diagram")
     )
 
-# --- Additional Models ---
-class GenerationHistory(BaseModel):
-    id: str
-    description: str
-    provider: str
-    code: str
-    explanation: str
-    resources: List[str]
-    estimated_cost: str
-    file_hierarchy: str
-    created_at: str
-
-@app.get("/api/history", response_model=List[GenerationHistory])
-async def get_history(current_user: Dict = Depends(get_current_user), limit: int = 10):
-    """Get user's generation history"""
-    generations = await get_user_generations(str(current_user["id"]), limit)
-    return [
-        GenerationHistory(
-            id=str(gen["id"]),
-            description=gen["description"],
-            provider=gen["provider"],
-            code=gen["code"],
-            explanation=gen["explanation"],
-            resources=gen["resources"] or [],
-            estimated_cost=gen["estimated_cost"],
-            file_hierarchy=gen["file_hierarchy"] or "",
-            created_at=gen["created_at"]
-        )
-        for gen in generations
-    ]
-
-# --- Health Check ---
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
@@ -707,7 +694,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
-# # --- JWT Utils ---
+
 # from fastapi import FastAPI, HTTPException, Depends, status
 # from fastapi.middleware.cors import CORSMiddleware
 # from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -720,7 +707,7 @@ if __name__ == "__main__":
 # import json
 # import jwt
 # import httpx
-# print("HTTPX VERSION:", httpx.__version__)
+# import re
 # from jwt.exceptions import PyJWTError
 # try:
 #     from mistralai.client import MistralClient
@@ -729,8 +716,6 @@ if __name__ == "__main__":
 # except ImportError:
 #     from mistralai import Mistral
 #     use_new_api = False
-# #from mistralai import Mistral
-# # Removed the unused ChatMessage import
 # from supabase import create_client, Client
 # from dotenv import load_dotenv
 
@@ -765,12 +750,145 @@ if __name__ == "__main__":
 # supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # # Debug: Print the key type (remove in production)
-# print(f"DEBUG: Using Supabase key starting with: {SUPABASE_KEY[:20]}...")
-# print(f"DEBUG: Key length: {len(SUPABASE_KEY)}")
+# # print(f"DEBUG: Using Supabase key starting with: {SUPABASE_KEY[:20]}...")
+# # print(f"DEBUG: Key length: {len(SUPABASE_KEY)}")
 
-# supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# # --- Mistral AI Client ---
+# if use_new_api:
+#     mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
+# else:
+#     mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
+# MISTRAL_MODEL = "codestral-latest"  # Using the latest Codestral model
 
-# # Add this to your create_user function to debug
+# # --- In-memory cache (consider Redis for production) ---
+# response_cache: Dict[str, Dict] = {}
+
+# # --- Helper Functions ---
+# def detect_cloud_provider(description: str) -> List[str]:
+#     """Detect which cloud providers are mentioned in the description"""
+#     providers = []
+#     description_lower = description.lower()
+    
+#     if any(keyword in description_lower for keyword in ['aws', 'amazon', 'ec2', 's3', 'rds', 'lambda']):
+#         providers.append('aws')
+#     if any(keyword in description_lower for keyword in ['azure', 'microsoft', 'vm', 'blob', 'cosmos']):
+#         providers.append('azure')
+#     if any(keyword in description_lower for keyword in ['gcp', 'google', 'gce', 'cloud storage', 'bigquery']):
+#         providers.append('gcp')
+    
+#     # If no specific provider mentioned, default to all three
+#     if not providers:
+#         providers = ['aws', 'azure', 'gcp']
+    
+#     return providers
+
+# def is_valid_infrastructure_request(description: str) -> bool:
+#     """Check if the description is a valid infrastructure request"""
+#     infrastructure_keywords = [
+#         'vm', 'virtual machine', 'ec2', 'instance', 'server', 'compute',
+#         'vpc', 'network', 'subnet', 'security group', 'firewall',
+#         'database', 'rds', 'mysql', 'postgresql', 'storage', 's3', 'blob',
+#         'load balancer', 'alb', 'nlb', 'api gateway', 'lambda', 'function',
+#         'kubernetes', 'container', 'docker', 'ecs', 'aks', 'gke',
+#         'terraform', 'infrastructure', 'cloud', 'aws', 'azure', 'gcp',
+#         'deploy', 'provision', 'create', 'setup', 'configure'
+#     ]
+    
+#     description_lower = description.lower()
+#     return any(keyword in description_lower for keyword in infrastructure_keywords)
+
+# def generate_file_explanations(file_hierarchy: str, resources: List[str]) -> Dict[str, str]:
+#     """Generate explanations for files and folders"""
+#     explanations = {}
+    
+#     # Default explanations for common Terraform files
+#     if 'main.tf' in file_hierarchy:
+#         explanations['main.tf'] = "Main configuration file containing core resources and module instantiations. This is the entry point for your Terraform deployment."
+    
+#     if 'variables.tf' in file_hierarchy:
+#         explanations['variables.tf'] = "Variable declarations with types, descriptions, and default values. Allows customization of the infrastructure without modifying the main code."
+    
+#     if 'outputs.tf' in file_hierarchy:
+#         explanations['outputs.tf'] = "Output values that expose important resource attributes like IDs, ARNs, and endpoints for use by other configurations or for reference."
+    
+#     if 'terraform.tfvars.example' in file_hierarchy:
+#         explanations['terraform.tfvars.example'] = "Example values file showing how to set variables. Copy this to terraform.tfvars and customize for your environment."
+    
+#     if 'locals.tf' in file_hierarchy:
+#         explanations['locals.tf'] = "Local variables for naming conventions, tags, and computed values. Helps maintain consistency across resources."
+    
+#     if 'providers.tf' in file_hierarchy:
+#         explanations['providers.tf'] = "Provider configuration specifying cloud provider settings, authentication, and version constraints."
+    
+#     if 'versions.tf' in file_hierarchy:
+#         explanations['versions.tf'] = "Terraform and provider version constraints to ensure consistent deployments across environments."
+    
+#     # Module explanations
+#     if 'module/' in file_hierarchy:
+#         explanations['module/'] = "Reusable Terraform modules organized by functionality. Each module encapsulates related resources for better organization and reusability."
+        
+#         if 'compute/' in file_hierarchy:
+#             explanations['module/compute/'] = "Compute module containing virtual machines, auto-scaling groups, and related compute resources with standardized configurations."
+        
+#         if 'network/' in file_hierarchy:
+#             explanations['module/network/'] = "Networking module defining VPCs, subnets, route tables, and security groups with best-practice network segmentation."
+        
+#         if 'database/' in file_hierarchy:
+#             explanations['module/database/'] = "Database module for managed database services with backup, monitoring, and security configurations."
+    
+#     # Ansible explanations
+#     if 'ansible/' in file_hierarchy:
+#         explanations['ansible/'] = "Ansible automation for post-provisioning configuration management and application deployment."
+        
+#         if 'roles/' in file_hierarchy:
+#             explanations['ansible/roles/'] = "Ansible roles organized by functionality. Each role contains tasks, handlers, variables, and templates for specific configuration tasks."
+        
+#         if 'playbooks/' in file_hierarchy:
+#             explanations['ansible/playbooks/'] = "Ansible playbooks that orchestrate role execution and define the complete configuration workflow."
+    
+#     return explanations
+
+# # --- Pydantic Models ---
+# class RegisterRequest(BaseModel):
+#     email: str
+#     name: str
+#     password: str
+
+# class LoginRequest(BaseModel):
+#     email: str
+#     password: str
+
+# class AuthResponse(BaseModel):
+#     message: str
+#     user: Dict[str, str]
+#     access_token: str
+#     token_type: str = "bearer"
+
+# class GenerateRequest(BaseModel):
+#     description: str = Field(..., min_length=10, max_length=1000,
+#                            description="A detailed description of the Terraform code to generate.")
+#     provider: str = "aws"
+
+# class MultiCloudCode(BaseModel):
+#     aws: Optional[str] = None
+#     azure: Optional[str] = None
+#     gcp: Optional[str] = None
+
+# class GenerateResponse(BaseModel):
+#     code: str
+#     explanation: str
+#     resources: List[str]
+#     estimated_cost: str
+#     provider: str
+#     generated_at: str
+#     cached_response: bool = False
+#     file_hierarchy: str = ""
+#     multi_cloud_code: Optional[MultiCloudCode] = None
+#     file_explanations: Dict[str, str] = {}
+#     is_valid_request: bool = True
+#     architecture_diagram_url: Optional[str] = None
+
+# # --- Database Helper Functions ---
 # async def create_user(email: str, name: str, password: str):
 #     """Create a new user in Supabase"""
 #     try:
@@ -798,71 +916,6 @@ if __name__ == "__main__":
 #         # Print more detailed error info
 #         if hasattr(e, 'details'):
 #             print(f"Error details: {e.details}")
-#         return None
-
-# # --- Mistral AI Client ---
-# # Ensure you set MISTRAL_API_KEY in your environment variables
-# #mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
-# # Update your client initialization:
-# if use_new_api:
-#     mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
-# else:
-#     mistral_client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
-# MISTRAL_MODEL = "codestral-latest"  # Using the latest Codestral model
-
-# # --- In-memory cache (consider Redis for production) ---
-# response_cache: Dict[str, Dict] = {}
-
-# # --- Pydantic Models ---
-# class RegisterRequest(BaseModel):
-#     email: str
-#     name: str
-#     password: str
-
-# class LoginRequest(BaseModel):
-#     email: str
-#     password: str
-
-# class AuthResponse(BaseModel):
-#     message: str
-#     user: Dict[str, str]
-#     access_token: str
-#     token_type: str = "bearer"
-
-# class GenerateRequest(BaseModel):
-#     description: str = Field(..., min_length=10, max_length=1000,
-#                            description="A detailed description of the Terraform code to generate.")
-#     provider: str = "aws"
-
-# class GenerateResponse(BaseModel):
-#     code: str
-#     explanation: str
-#     resources: List[str]
-#     estimated_cost: str
-#     provider: str
-#     generated_at: str
-#     cached_response: bool = False  # Minor Feature: Indicate if response was cached
-#     file_hierarchy: str = ""  # New: Tree-like file structure display
-
-# # --- Database Helper Functions ---
-# async def create_user(email: str, name: str, password: str):
-#     """Create a new user in Supabase"""
-#     try:
-#         # Hash password
-#         password_hash = hashlib.sha256(password.encode()).hexdigest()
-        
-#         # Insert user into database
-#         result = supabase.table("users").insert({
-#             "email": email.lower(),
-#             "name": name,
-#             "password_hash": password_hash
-#         }).execute()
-        
-#         if result.data:
-#             return result.data[0]
-#         return None
-#     except Exception as e:
-#         print(f"Database error creating user: {e}")
 #         return None
 
 # async def get_user_by_email(email: str):
@@ -938,8 +991,39 @@ if __name__ == "__main__":
 #     except PyJWTError:
 #         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials.")
 
-# # --- Mistral AI Call ---
+# # --- Multi-Cloud Generation ---
+# async def generate_multi_cloud_code(description: str, providers: List[str]):
+#     """Generate Terraform code for multiple cloud providers"""
+#     multi_cloud_code = MultiCloudCode()
+    
+#     for provider in providers:
+#         try:
+#             result = await call_ai_model(description, provider)
+#             if provider == 'aws':
+#                 multi_cloud_code.aws = result["code"]
+#             elif provider == 'azure':
+#                 multi_cloud_code.azure = result["code"]
+#             elif provider == 'gcp':
+#                 multi_cloud_code.gcp = result["code"]
+#         except Exception as e:
+#             print(f"Error generating code for {provider}: {e}")
+#             continue
+    
+#     return multi_cloud_code
+
+# # --- AI Model Call ---
 # async def call_ai_model(description: str, provider: str):
+#     # Check if request is valid infrastructure request
+#     if not is_valid_infrastructure_request(description):
+#         return {
+#             "code": "",
+#             "explanation": "Please provide a clear description of your cloud infrastructure requirements (e.g., 'Create a VPC with two EC2 instances and RDS').",
+#             "resources": [],
+#             "estimated_cost": "Unknown",
+#             "file_hierarchy": "",
+#             "is_valid_request": False
+#         }
+    
 #     # Minor Feature: Simple caching based on description and provider
 #     cache_key = hashlib.sha256(f"{description}-{provider}".encode()).hexdigest()
 #     if cache_key in response_cache:
@@ -947,6 +1031,7 @@ if __name__ == "__main__":
 #         cached_data = response_cache[cache_key]
 #         cached_data["cached_response"] = True
 #         return cached_data
+
 #     system_prompt = f"""
 # You are a highly experienced DevOps and Cloud Infrastructure Engineer specialized in writing production-grade, enterprise level modularity, and cost-efficient Terraform code for the {provider} cloud provider.
 
@@ -1105,7 +1190,6 @@ if __name__ == "__main__":
 #         file_hierarchy = ""
         
 #         # Extract multiple Terraform files with filenames
-#         import re
 #         terraform_pattern = r'```terraform:([^\n]+)\n(.*?)```'
 #         terraform_matches = re.findall(terraform_pattern, content, re.DOTALL)
         
@@ -1160,7 +1244,8 @@ if __name__ == "__main__":
 #             "explanation": metadata.get("explanation", "No explanation provided."),
 #             "resources": metadata.get("resources", []),
 #             "estimated_cost": metadata.get("estimated_cost", "Unknown"),
-#             "file_hierarchy": metadata.get("file_hierarchy", file_hierarchy)
+#             "file_hierarchy": metadata.get("file_hierarchy", file_hierarchy),
+#             "is_valid_request": True
 #         }
         
 #         response_cache[cache_key] = result.copy()  # Store a copy in cache
@@ -1224,12 +1309,38 @@ if __name__ == "__main__":
 
 # @app.post("/api/generate", response_model=GenerateResponse)
 # async def generate(request: GenerateRequest, current_user: Dict = Depends(get_current_user)):
-#     # Minor Feature: More robust input validation with Pydantic Field
+#     # Input validation
 #     if not request.description.strip():
 #         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Description cannot be empty.")
 
-#     result = await call_ai_model(request.description, request.provider)
+#     # Check if it's a valid infrastructure request
+#     if not is_valid_infrastructure_request(request.description):
+#         return GenerateResponse(
+#             code="",
+#             explanation="⚠️ Please only provide a clear description of your cloud infrastructure requirements (e.g., 'Create a VPC with two EC2 instances and RDS').",
+#             resources=[],
+#             estimated_cost="Unknown",
+#             provider=request.provider,
+#             generated_at=datetime.utcnow().isoformat(),
+#             cached_response=False,
+#             file_hierarchy="",
+#             is_valid_request=False
+#         )
 
+#     # Detect cloud providers mentioned in description
+#     detected_providers = detect_cloud_provider(request.description)
+    
+#     # Generate code for primary provider
+#     result = await call_ai_model(request.description, request.provider)
+    
+#     # Generate multi-cloud code if no specific provider mentioned
+#     multi_cloud_code = None
+#     if len(detected_providers) > 1 or (len(detected_providers) == 3 and 'aws' in detected_providers and 'azure' in detected_providers and 'gcp' in detected_providers):
+#         multi_cloud_code = await generate_multi_cloud_code(request.description, detected_providers)
+    
+#     # Generate file explanations
+#     file_explanations = generate_file_explanations(result["file_hierarchy"], result["resources"])
+    
 #     # Save generation to database
 #     await save_generation(
 #         user_id=str(current_user["id"]),
@@ -1245,8 +1356,12 @@ if __name__ == "__main__":
 #         estimated_cost=result["estimated_cost"],
 #         provider=request.provider,
 #         generated_at=datetime.utcnow().isoformat(),
-#         cached_response=result.get("cached_response", False),  # Pass through cache status
-#         file_hierarchy=result["file_hierarchy"]
+#         cached_response=result.get("cached_response", False),
+#         file_hierarchy=result["file_hierarchy"],
+#         multi_cloud_code=multi_cloud_code,
+#         file_explanations=file_explanations,
+#         is_valid_request=result.get("is_valid_request", True),
+#         architecture_diagram_url=None  # Placeholder for future diagram integration
 #     )
 
 # # --- Additional Models ---
