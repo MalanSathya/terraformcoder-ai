@@ -445,7 +445,7 @@ Optionally include additional files as needed:
   "resources": ["azurerm_virtual_network","azurerm_linux_virtual_machine", "ansible_role_install_nginx"],
   "estimated_cost": "Low",
   "file_hierarchy": "Generate a file hierarchy for the generated code, similar to the output of the 'tree' command. Example:\nterraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── providers.tf\n├── ansible/\n└── playbook.yml",
-  "architecture_diagram_mermaid": "Generate a Mermaid.js diagram for the architecture. Example:\n```mermaid\ngraph TD\n    A[Client] --> B(Load Balancer)\n    B --> C{Server}\n    C --> D[Database]\n```
+  "architecture_diagram_mermaid": "Generate a Mermaid.js diagram for the architecture. Example:\n```mermaid\ngraph TD\n    A[Client] --> B(Load Balancer)\n    B --> C{'Server'}\n    C --> D[Database]\n```
 }}
 """
 
