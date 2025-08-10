@@ -467,7 +467,7 @@ Optionally include additional files as needed:
   "explanation": "This deployment includes modular Terraform and Ansible automation for provisioning and configuration.",
   "resources": ["azurerm_virtual_network","azurerm_linux_virtual_machine", "ansible_role_install_nginx"],
   "estimated_cost": "Low",
-  "file_hierarchy": "terraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── providers.tf\n├── ansible/\n└── playbook.yml"
+  "file_hierarchy": "Generate a file hierarchy for the generated code, similar to the output of the 'tree' command. Example:\nterraform-project/\n├── main.tf\n├── variables.tf\n├── outputs.tf\n├── terraform.tfvars.example\n├── locals.tf\n├── providers.tf\n├── ansible/\n└── playbook.yml"
 }}
 """
 

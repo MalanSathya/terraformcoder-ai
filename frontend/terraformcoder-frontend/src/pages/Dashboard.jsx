@@ -217,13 +217,7 @@ const EnhancedDashboard = () => {
 
         {/* Explanation & Additional Info */}
         <div className="grid md:grid-cols-2 gap-6">
-          <GlassCard>
-            <div className="flex items-center space-x-2 mb-4">
-              <BrainCircuit className="w-5 h-5 text-purple-400"/>
-              <h4 className="font-semibold text-slate-200 text-lg">AI Analysis</h4>
-            </div>
-            <p className="text-slate-300 leading-relaxed">{result.explanation}</p>
-          </GlassCard>
+          
 
           <GlassCard>
             <div className="space-y-4">
