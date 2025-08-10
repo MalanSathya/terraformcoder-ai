@@ -228,7 +228,7 @@ const EnhancedDashboard = () => {
           <GlassCard>
             <div className="space-y-4">
               {/* File Hierarchy */}
-              {result.file_hierarchy && (
+              {result.file_hierarchy ? (
                 <div>
                   <div className="flex items-center space-x-2 mb-3">
                     <Folder className="w-5 h-5 text-cyan-400" />
@@ -237,6 +237,10 @@ const EnhancedDashboard = () => {
                   <pre className="text-slate-300 font-mono text-sm leading-relaxed whitespace-pre-wrap bg-slate-900/50 p-3 rounded-lg">
                     {result.file_hierarchy}
                   </pre>
+                </div>
+              ) : (
+                <div className="text-slate-500 text-sm">
+                  File hierarchy could not be generated for this request.
                 </div>
               )}
 
@@ -411,7 +415,7 @@ const EnhancedDashboard = () => {
         <footer className="relative z-10 mt-16 border-t border-slate-800/50 bg-slate-900/30 backdrop-blur-md">
             <div className="max-w-6xl mx-auto px-6 py-8">
                 <div className="text-center text-sm text-slate-400">
-                    <span>© {new Date().getFullYear()} AI Terraform Coder. Enhanced with Neural Processing by Malan.</span>
+                    <span>© {new Date().getFullYear()} AI Terraform Coder.</span>
                 </div>
             </div>
         </footer>

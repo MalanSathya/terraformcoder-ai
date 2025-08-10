@@ -221,7 +221,9 @@ async def generate_architecture_diagram(description: str, resources: List[str], 
             dot.edge('compute', 'db', label='data')
 
     try:
+        print(f"Attempting to render diagram to: {diagram_path}")
         dot.render(diagram_path, format='png', cleanup=True)
+        print(f"Diagram rendered successfully to: {diagram_path}")
         diagram_url = f"/static/diagrams/{diagram_filename}.png"
 
         diagram_description = "This diagram shows the high-level architecture of the generated infrastructure."
