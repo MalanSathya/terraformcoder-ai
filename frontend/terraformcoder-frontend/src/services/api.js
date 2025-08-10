@@ -72,11 +72,7 @@ export const authAPI = {
   }
 };
 
-// Generate Terraform code
-// export const generateCode = async (description, provider, token) =>
-//   axios.post(`${API_BASE_URL}/api/generate`, { description, provider }, {
-//     headers: { Authorization: `Bearer ${token}` }
-//   });
+
 
 // Enhanced code generation service
 export const generateCode = (description, provider = 'aws', token = null, includeDiagram = true) => {
@@ -111,26 +107,7 @@ export const generateDiagram = (description, resources) => {
 
 
 
-// // Generate architecture diagram (placeholder for future implementation)
-// export const generateArchitectureDiagram = async (description, resources) => {
-//   try {
-//     // This is a placeholder - you'll need to integrate with a diagram service
-//     // like Phind.com API or create your own diagram generation logic
-    
-//     // For now, return a mock response
-//     return {
-//       data: {
-//         diagram_url: null,
-//         diagram_data: null,
-//         success: false,
-//         message: 'Diagram generation coming soon'
-//       }
-//     };
-//   } catch (error) {
-//     console.error('Error generating diagram:', error);
-//     throw error;
-//   }
-// };
+
 
 // Health check
 export const healthCheck = async () => {

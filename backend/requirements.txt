@@ -14,3 +14,6 @@ supabase==2.17.0
 PyJWT==2.10.1
 
 # Let pip resolve httpx.
+
+# Diagram generation
+graphviz==0.20.1
