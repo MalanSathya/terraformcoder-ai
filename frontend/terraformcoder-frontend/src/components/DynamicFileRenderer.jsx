@@ -6,7 +6,7 @@ import GlassCard from './GlassCard';
 
 const DynamicFileRenderer = ({ files, onCopy }) => {
   const [expandedFiles, setExpandedFiles] = useState(new Set());
-  const [expandedExplanations, setExpandedExplanations] = useState(new Set());
+  const [expandedExplanations, setExpandedExplanations] = useState(new Set(files.map(f => f.filename)));
 
   const toggleFileExpansion = (filename) => {
     const newExpanded = new Set(expandedFiles);

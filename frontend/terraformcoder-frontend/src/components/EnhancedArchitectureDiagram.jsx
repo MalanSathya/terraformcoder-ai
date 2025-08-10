@@ -4,7 +4,7 @@ import GlassCard from './GlassCard';
 import { API_BASE_URL } from '../services/api';
 
 const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, description }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   // Component icons mapping
   const getComponentIcon = (component) => {

@@ -40,7 +40,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# --- Static Files ---
+static_files_path = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=static_files_path), name="static")
 
 # --- Security ---
 security = HTTPBearer()
