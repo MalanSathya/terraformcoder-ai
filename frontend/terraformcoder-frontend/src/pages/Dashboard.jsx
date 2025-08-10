@@ -31,7 +31,7 @@ import {
   ZapIcon,
   SparklesIcon,
   FileTextIcon,
-  EyeIcon
+  Eye
 } from 'lucide-react';
 
 const EnhancedDashboard = () => {
@@ -370,7 +370,7 @@ const EnhancedDashboard = () => {
                       className="w-4 h-4 text-emerald-600 bg-slate-700 border-slate-600 rounded focus:ring-emerald-500 focus:ring-2"
                     />
                     <label htmlFor="include-diagram" className="text-slate-300 text-sm flex items-center space-x-1">
-                      <EyeIcon className="w-3 h-3" />
+                      <Eye className="w-3 h-3" />
                       <span>Generate Diagram</span>
                     </label>
                   </div>
