@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
+from fastapi import Body
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timedelta
@@ -247,14 +249,14 @@ Keep the explanation concise but comprehensive (2-3 paragraphs).
         print(f"Error generating explanation for {filename}: {e}")
         return f"Configuration file for {category} components. Contains essential infrastructure definitions and settings."
 
-async def create_mermaid_chart(mermaid_syntax: str) -> Optional[str]:
+#async def create_mermaid_chart(mermaid_syntax: str) -> Optional[str]:
     """Create a mermaidchart.com URL for the given Mermaid syntax"""
     try:
         # Prepare the data for mermaidchart.com
         chart_data = {
             "code": mermaid_syntax,
             "mermaid": {
-                "theme": "dark"
+                "theme": "light"
             },
             "autoSync": True,
             "updateEditor": False
@@ -364,7 +366,41 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
     components = list(set([comp for comp in components if comp]))
     
     # Create mermaidchart.com URL
-    mermaid_chart_url = await create_mermaid_chart(mermaid_syntax)
+    #mermaid_chart_url = await create_mermaid_chart(mermaid_syntax)
+    
+    async def create_mermaid_chart(mermaid_syntax: str) -> Optional[str]:
+        """Create Mermaid chart URL, preferring token API if available."""
+        token = os.getenv("MERMAID_API_TOKEN")
+        try:
+            if token:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        "https://api.mermaidchart.com/v1/charts",
+                        headers={
+                            "Authorization": f"Bearer {token}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "code": mermaid_syntax,
+                            "theme": "light",
+                            "autoSync": True
+                        }
+                    )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data.get("shareUrl") or data.get("url")
+                else:
+                    print("Mermaid API error:", resp.text)
+
+            # Fallback to free live link
+            chart_data = {"code": mermaid_syntax, "mermaid": {"theme": "dark"}}
+            encoded_data = base64.urlsafe_b64encode(json.dumps(chart_data).encode()).decode()
+            return f"https://mermaid.live/edit#{encoded_data}"
+
+        except Exception as e:
+            print(f"Error creating mermaid chart: {e}")
+            return None
+
 
     diagram_description = f"Architecture diagram for {provider} infrastructure showing the relationships between {len(components)} main components including compute, storage, networking, and security layers."
 
@@ -373,7 +409,7 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
         diagram_description=diagram_description,
         components=components[:10],  # Limit to top 10 components
         connections=connections[:10],  # Limit to top 10 connections
-        mermaid_chart_url=mermaid_chart_url
+        #mermaid_chart_url=mermaid_chart_url
     )
 
 async def generate_basic_mermaid_diagram(resources: List[str], provider: str) -> str:
@@ -879,6 +915,46 @@ async def generate_diagram(request: GenerateRequest, current_user: Dict = Depend
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Diagram generation failed: {str(e)}"
         )
+
+from fastapi import Body
+
+@app.post("/api/mermaid/render")
+async def render_mermaid(
+    payload: dict = Body(...),
+    current_user: Dict = Depends(get_current_user)
+):
+    token = os.getenv("MERMAID_API_TOKEN")
+    api_url = os.getenv("MERMAID_API_URL", "https://api.mermaidchart.com/v1/render")
+
+    if not token:
+        raise HTTPException(status_code=500, detail="Mermaid API token not configured.")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                api_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
+                json={
+                    "code": payload.get("code"),
+                    "theme": payload.get("theme", "dark"),
+                    "format": payload.get("format", "svg")
+                }
+            )
+
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+        # Return raw image
+        if payload.get("format", "svg") == "svg":
+            return Response(content=resp.content, media_type="image/svg+xml")
+        return Response(content=resp.content, media_type="image/png")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Mermaid render failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
