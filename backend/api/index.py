@@ -291,7 +291,7 @@ Create a comprehensive Mermaid graph TD (top-down) diagram that shows:
 5. Load balancing and scaling components
 
 Use appropriate Mermaid syntax with:
-- Clear node labels
+- Clear node labels. Ensure node labels are simple strings and do not contain special Mermaid syntax characters like '(', ')', '[', ']', '{', '}', '<', '>', ':', ';', '#', or numbers immediately following parentheses or brackets, unless they are part of a valid Mermaid node definition.
 - Different node shapes for different component types
 - Directional arrows showing data/traffic flow
 - Subgraphs for logical groupings (VPC, subnets, etc.)
