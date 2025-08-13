@@ -125,7 +125,3 @@ Our application intelligently generates a clear, tree-like file hierarchy for yo
 ## 👋 Contributing (Join the Fun!)
 
 Got ideas? Found a bug? Want to make it even better? We welcome contributions with open arms! Feel free to submit issues or pull requests. Let's build something amazing together! 🤝
-
-## 📜 License
-
-[Specify your license here, e.g., MIT, Apache 2.0, etc. – Don't forget this important part!]
