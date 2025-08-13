@@ -323,14 +323,19 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
             )
         
         ai_generated_mermaid = response.choices[0].message.content.strip()
-        
+
         # Clean up the response to extract only the Mermaid syntax
         mermaid_syntax = ai_generated_mermaid
         if "```mermaid" in ai_generated_mermaid:
             mermaid_syntax = ai_generated_mermaid.split("```mermaid")[1].split("```")[0].strip()
         elif "```" in ai_generated_mermaid:
             mermaid_syntax = ai_generated_mermaid.split("```")[1].strip()
-        
+
+        # Basic validation of Mermaid syntax
+        if not (mermaid_syntax.startswith("graph TD") or mermaid_syntax.startswith("graph LR")) or "-->" not in mermaid_syntax:
+            print(f"WARNING: AI generated invalid Mermaid syntax. Falling back to basic diagram. Invalid syntax: {mermaid_syntax}")
+            mermaid_syntax = await generate_basic_mermaid_diagram(resources, provider)
+
     except Exception as e:
         print(f"Error generating AI diagram: {e}")
         # Fallback to basic diagram generation
