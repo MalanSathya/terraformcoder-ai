@@ -7,6 +7,8 @@ import GlassCard from '../components/GlassCard';
 import ProviderSelector from '../components/ProviderSelector';
 import DynamicFileRenderer from '../components/DynamicFileRenderer';
 import EnhancedArchitectureDiagram from '../components/EnhancedArchitectureDiagram';
+import MultiCloudTabs from '../components/MultiCloudTabs';
+import FileExplanations from '../components/FileExplanations';
 import InvalidRequestCard from '../components/InvalidRequestCard';
 
 // Icons from Lucide
@@ -21,8 +23,10 @@ import {
   BrainCircuit,
   DollarSign,
   Layers,
+  Folder,
   Clock,
   Server,
+  AlertTriangle,
   Clipboard,
   Zap,
   Sparkles,

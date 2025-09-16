@@ -43,7 +43,7 @@ app.add_middleware(
 )
 
 # --- Static Files ---
-static_files_path = os.path.join(os.getcwd(), 'static')
+static_files_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static'))
 os.makedirs(static_files_path, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_files_path), name="static")
 
@@ -291,7 +291,7 @@ Create a comprehensive Mermaid graph TD (top-down) diagram that shows:
 5. Load balancing and scaling components
 
 Use appropriate Mermaid syntax with:
-- Clear node labels. Ensure node labels are simple strings and do not contain special Mermaid syntax characters like '(', ')', '[', ']', '{', '}', '<', '>', ':', ';', '#', or numbers immediately following parentheses or brackets, unless they are part of a valid Mermaid node definition.
+- Clear node labels. Ensure node labels are simple strings and do not contain special Mermaid syntax characters like '(', ')', '[', ']', '{{', '}}', '<', '>', ':', ';', '#', or numbers immediately following parentheses or brackets, unless they are part of a valid Mermaid node definition.
 - Different node shapes for different component types
 - Directional arrows showing data/traffic flow
 - Subgraphs for logical groupings (VPC, subnets, etc.)
@@ -355,8 +355,8 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
                 from_node = parts[0].strip()
                 to_node = parts[1].strip()
                 # Extract clean names from node definitions
-                from_name = re.sub(r'[A-Z]+\[([^\]]+)\]', r'\1', from_node)
-                to_name = re.sub(r'[A-Z]+\[([^\]]+)\]', r'\1', to_node)
+                from_name = re.sub(r'[A-Z]+[^\[]*\[([^\]]+)\]', r'\1', from_node)
+                to_name = re.sub(r'[A-Z]+[^\[]*\[([^\]]+)\]', r'\1', to_node)
                 connections.append({
                     "from": from_name,
                     "to": to_name,
@@ -364,7 +364,7 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
                 })
         elif '[' in line and ']' in line:
             # Extract component names from node definitions
-            matches = re.findall(r'[A-Z]+\[([^\]]+)\]', line)
+            matches = re.findall(r'[A-Z]+[^\[]*\[([^\]]+)\]', line)
             components.extend(matches)
 
     # Remove duplicates and clean up
@@ -452,7 +452,8 @@ def parse_generated_files(content: str) -> List[Dict[str, str]]:
     files = []
     
     # Enhanced regex pattern for file detection
-    file_pattern = r'```(?:terraform|yaml|yml|json|sh)?:?([^\n]+)\n(.*?)```'
+    file_pattern = r'```(?:terraform|yaml|yml|json|sh)?:?([^
+]+)\n(.*?)```'
     matches = re.findall(file_pattern, content, re.DOTALL)
     
     for filename, file_content in matches:
