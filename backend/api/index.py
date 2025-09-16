@@ -355,8 +355,8 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
                 from_node = parts[0].strip()
                 to_node = parts[1].strip()
                 # Extract clean names from node definitions
-                from_name = re.sub(r'[A-Z]+[^\[]*\[([^\]]+)\]', r'\1', from_node)
-                to_name = re.sub(r'[A-Z]+[^\[]*\[([^\]]+)\]', r'\1', to_node)
+                from_name = re.sub(r'[A-Z]+[^[]*\[([^\]]+)\]', r'\1', from_node)
+                to_name = re.sub(r'[A-Z]+[^[]*\[([^\]]+)\]', r'\1', to_node)
                 connections.append({
                     "from": from_name,
                     "to": to_name,
@@ -364,7 +364,11 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
                 })
         elif '[' in line and ']' in line:
             # Extract component names from node definitions
-            matches = re.findall(r'[A-Z]+[^\[]*\[([^\]]+)\]', line)
+            try:
+                matches = re.findall(r'[A-Z]+[^\[]*\[([^\]]+)\]', line)
+            except re.error as e:
+                print(f"Regex error: {e}")
+                matches = []
             components.extend(matches)
 
     # Remove duplicates and clean up
