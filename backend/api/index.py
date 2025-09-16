@@ -463,7 +463,7 @@ def parse_generated_files(content: str) -> List[Dict[str, str]]:
     file_pattern = r'```(\w+):([^\n]+)\n(.*?)\n```'
     matches = re.findall(file_pattern, content, re.DOTALL)
     
-    for filename, file_content in matches:
+    for lang, filename, file_content in matches:
         filename = filename.strip()
         file_content = file_content.strip()
         
