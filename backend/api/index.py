@@ -354,9 +354,13 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
             if len(parts) == 2:
                 from_node = parts[0].strip()
                 to_node = parts[1].strip()
-                # Extract clean names from node definitions
-                from_name = re.sub(r'[A-Z]+[^[]*\[([^\]]+)\]', r'\1', from_node)
-                to_name = re.sub(r'[A-Z]+[^[]*\[([^\]]+)\]', r'\1', to_node)
+                try:
+                    from_name = re.sub(r'\[(.*?)\]', r'\1', from_node)
+                    to_name = re.sub(r'\[(.*?)\]', r'\1', to_node)
+                except re.error as e:
+                    print(f"Regex error: {e}")
+                    from_name = from_node
+                    to_name = to_node
                 connections.append({
                     "from": from_name,
                     "to": to_name,
@@ -365,7 +369,7 @@ Return ONLY the Mermaid syntax starting with 'graph TD' or 'graph LR'.
         elif '[' in line and ']' in line:
             # Extract component names from node definitions
             try:
-                matches = re.findall(r'[A-Z]+[^\[]*\[([^\]]+)\]', line)
+                matches = re.findall(r'\[(.*?)\]', line)
             except re.error as e:
                 print(f"Regex error: {e}")
                 matches = []
@@ -456,7 +460,7 @@ def parse_generated_files(content: str) -> List[Dict[str, str]]:
     files = []
     
     # Enhanced regex pattern for file detection
-    file_pattern = r'```(?:terraform|yaml|yml|json|sh)?:?([^]+)\n(.*?)```'
+    file_pattern = r'```(\w+):([^\n]+)\n(.*?)\n```'
     matches = re.findall(file_pattern, content, re.DOTALL)
     
     for filename, file_content in matches:
