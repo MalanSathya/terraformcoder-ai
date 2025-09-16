@@ -57,10 +57,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+try:
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables")
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+    print(f"Error connecting to Supabase: {e}")
+    supabase = None
 
 # --- Mistral AI Client ---
 if use_new_api:
