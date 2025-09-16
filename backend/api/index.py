@@ -452,8 +452,7 @@ def parse_generated_files(content: str) -> List[Dict[str, str]]:
     files = []
     
     # Enhanced regex pattern for file detection
-    file_pattern = r'```(?:terraform|yaml|yml|json|sh)?:?([^
-]+)\n(.*?)```'
+    file_pattern = r'```(?:terraform|yaml|yml|json|sh)?:?([^]+)\n(.*?)```'
     matches = re.findall(file_pattern, content, re.DOTALL)
     
     for filename, file_content in matches:
