@@ -143,64 +143,29 @@ async def generate_file_hierarchy(files: List[FileContent]) -> str:
     """Generate a tree-like file hierarchy from the generated files"""
     if not files:
         return "No files generated"
-    
-    # Organize files into a tree structure
+
+    tree = {}
+    for file in files:
+        parts = file.filename.split('/')
+        current_level = tree
+        for part in parts:
+            if part not in current_level:
+                current_level[part] = {}
+            current_level = current_level[part]
+
+    def build_tree_lines(tree, prefix=""):
+        lines = []
+        entries = list(tree.keys())
+        for i, entry in enumerate(entries):
+            connector = "├── " if i < len(entries) - 1 else "└── "
+            lines.append(f"{prefix}{connector}{entry}")
+            if tree[entry]:
+                new_prefix = "│   " if i < len(entries) - 1 else "    "
+                lines.extend(build_tree_lines(tree[entry], prefix + new_prefix))
+        return lines
+
     tree_lines = ["terraform-infrastructure/"]
-    
-    # Group files by type and organize
-    terraform_files = [f for f in files if f.file_type == 'terraform']
-    ansible_files = [f for f in files if f.file_type == 'ansible']
-    other_files = [f for f in files if f.file_type not in ['terraform', 'ansible']]
-    
-    # Create modules directory if we have complex structure
-    has_modules = any('module' in f.filename.lower() or 'modules/' in f.filename for f in files)
-    has_ansible = len(ansible_files) > 0
-    
-    # Standard terraform files first
-    standard_tf_files = ['main.tf', 'variables.tf', 'outputs.tf', 'providers.tf', 'versions.tf', 'locals.tf']
-    
-    for std_file in standard_tf_files:
-        if any(f.filename == std_file for f in terraform_files):
-            tree_lines.append(f"├── {std_file}")
-    
-    # Other terraform files
-    for tf_file in terraform_files:
-        if tf_file.filename not in standard_tf_files and not tf_file.filename.startswith('terraform.tfvars'):
-            tree_lines.append(f"├── {tf_file.filename}")
-    
-    # tfvars files
-    tfvars_files = [f for f in terraform_files if f.filename.startswith('terraform.tfvars')]
-    for tfvars_file in tfvars_files:
-        tree_lines.append(f"├── {tfvars_file.filename}")
-    
-    # Modules directory
-    if has_modules:
-        tree_lines.append("├── modules/")
-        module_files = [f for f in files if 'modules/' in f.filename]
-        for i, mod_file in enumerate(module_files):
-            prefix = "│   ├──" if i < len(module_files) - 1 else "│   └──"
-            clean_name = mod_file.filename.replace('modules/', '')
-            tree_lines.append(f"{prefix} {clean_name}")
-    
-    # Ansible directory
-    if has_ansible:
-        tree_lines.append("├── ansible/")
-        for i, ansible_file in enumerate(ansible_files):
-            prefix = "│   ├──" if i < len(ansible_files) - 1 else "│   └──"
-            tree_lines.append(f"{prefix} {ansible_file.filename}")
-    
-    # Other files
-    for other_file in other_files:
-        tree_lines.append(f"├── {other_file.filename}")
-    
-    # Add README if not present
-    if not any(f.filename.lower() == 'readme.md' for f in files):
-        tree_lines.append("└── README.md")
-    else:
-        # Fix the last item to use └── instead of ├──
-        if tree_lines and tree_lines[-1].startswith("├──"):
-            tree_lines[-1] = tree_lines[-1].replace("├──", "└──")
-    
+    tree_lines.extend(build_tree_lines(tree))
     return "\n".join(tree_lines)
 
 async def generate_file_explanation(filename: str, content: str, file_type: str, category: str) -> str:
