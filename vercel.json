@@ -1,19 +1,28 @@
 {
+  "version": 2,
   "builds": [
+    {
+      "src": "backend/api/index.py",
+      "use": "@vercel/python"
+    },
     {
       "src": "frontend/terraformcoder-frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "installCommand": "npm install",
-        "buildCommand": "npm run build",
+        "installCommand": "cd frontend/terraformcoder-frontend && npm install",
+        "buildCommand": "cd frontend/terraformcoder-frontend && npm run build",
         "outputDirectory": "frontend/terraformcoder-frontend/build"
       }
     }
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "backend/api/index.py"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "frontend/terraformcoder-frontend/build/$1"
     }
   ]
 }
