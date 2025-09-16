@@ -18,33 +18,14 @@ import GlassCard from './GlassCard';
 const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, description }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [diagramError, setDiagramError] = useState(false);
-  const [isLoadingChart, setIsLoadingChart] = useState(false);
   const mermaidRef = useRef(null);
 
   useEffect(() => {
     if (architectureDiagram?.diagram_mermaid_syntax && mermaidRef.current) {
       renderMermaidDiagram();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [architectureDiagram?.diagram_mermaid_syntax]);
-
-  async function fetchMermaidSecure(code) {
-  try {
-    const res = await fetch('/api/mermaid/render', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-      },
-      body: JSON.stringify({ code, format: 'svg', theme: 'dark' })
-    });
-
-    if (!res.ok) throw new Error(await res.text());
-    const svgText = await res.text();
-    mermaidRef.current.innerHTML = svgText;
-  } catch (err) {
-    console.error("Secure Mermaid render failed:", err);
-  }
-}
 
   const renderMermaidDiagram = async () => {
     try {
