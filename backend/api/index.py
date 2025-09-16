@@ -815,14 +815,18 @@ class AuthResponse(BaseModel):
 
 @app.post("/api/auth/register", response_model=AuthResponse)
 async def register(request: RegisterRequest):
+    print(f"Attempting to register user: {request.email}")
     existing_user = await get_user_by_email(request.email)
     if existing_user:
+        print(f"User {request.email} already exists.")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists.")
 
     user = await create_user(request.email, request.name, request.password)
     if not user:
+        print(f"Failed to create user: {request.email}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user.")
 
+    print(f"User {request.email} created successfully.")
     token = create_access_token({"sub": str(user["id"])})
 
     return AuthResponse(
