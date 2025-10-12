@@ -705,6 +705,16 @@ Optionally include additional files as needed:
                           detail=f"AI generation failed: {str(e)}")
 
 # --- Database Helper Functions (keeping existing ones) ---
+
+# NOTE: For optimal performance, ensure the following schema optimizations are applied in your Supabase dashboard:
+#
+# 1. `users` table:
+#    - Add a unique index on the `email` column.
+#
+# 2. `generations` table:
+#    - Add a foreign key constraint from `generations.user_id` to `users.id`.
+#    - Add a composite index on `(user_id, created_at)`.
+
 async def create_user(email: str, name: str, password: str):
     """Create a new user in Supabase"""
     try:
@@ -742,6 +752,28 @@ async def get_user_by_id(user_id: str):
         return None
     except Exception as e:
         print(f"Database error getting user by ID: {e}")
+        return None
+
+async def save_generation(user_id: str, request: GenerateRequest, response: GenerateResponse):
+    """Save a generation to the database."""
+    try:
+        generation_data = {
+            "user_id": user_id,
+            "description": request.description,
+            "provider": request.provider,
+            "estimated_cost": response.estimated_cost,
+            "files": [file.dict() for file in response.files],
+            "explanation": response.explanation,
+            "resources": response.resources,
+            "file_hierarchy": response.file_hierarchy,
+            "architecture_diagram": response.architecture_diagram.dict() if response.architecture_diagram else None,
+        }
+        result = supabase.table("generations").insert(generation_data).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        print(f"Database error saving generation: {e}")
         return None
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -810,10 +842,19 @@ async def register(request: RegisterRequest):
 
 @app.post("/api/auth/login", response_model=AuthResponse)
 async def login(request: LoginRequest):
+    """
+    Logs in a user.
+    NOTE: This function assumes that there is a boolean field `is_rls_enabled` in the `users` table.
+    Make sure to adjust your RLS rules in Supabase to allow users to log in only when this field is false.
+    """
     user = await get_user_by_email(request.email)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
     
+    # Check if RLS is enabled for the user
+    if user.get("is_rls_enabled", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Login is disabled for this user.")
+
     hashed = hashlib.sha256(request.password.encode()).hexdigest()
     if user["password_hash"] != hashed:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")

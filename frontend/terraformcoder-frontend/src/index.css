@@ -3,5 +3,15 @@
 @tailwind utilities;
 
 body {
-  @apply bg-gradient-to-br from-gray-900 to-black text-white min-h-screen;
+  @apply min-h-screen;
+}
+
+/* Light mode styles */
+body {
+  @apply bg-white text-black;
+}
+
+/* Dark mode styles */
+.dark body {
+  @apply bg-gradient-to-br from-gray-900 to-black text-white;
 }

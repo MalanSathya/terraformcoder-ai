@@ -1,6 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { generateCode } from '../services/api';
+import ThemeToggle from '../components/ThemeToggle';
 
 // Enhanced UI Components
 import GlassCard from '../components/GlassCard';
@@ -359,7 +360,7 @@ const EnhancedDashboard = () => {
   };
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 font-sans text-white">
+    <div className="relative min-h-screen bg-gradient-to-br from-white to-gray-100 dark:from-slate-900 dark:via-purple-900 dark:to-slate-900 font-sans text-gray-800 dark:text-white">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
@@ -382,6 +383,7 @@ const EnhancedDashboard = () => {
         </div>
 
         <div className="flex items-center space-x-3">
+          <ThemeToggle />
           <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             <span className="text-slate-300 text-sm">Online</span>
