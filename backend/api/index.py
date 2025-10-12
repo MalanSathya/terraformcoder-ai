@@ -766,6 +766,32 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials.")
 
+async def save_generation(user_id: str, request: GenerateRequest, response: GenerateResponse) -> None:
+    """Save a generation to the database."""
+    try:
+        # Prepare data for insertion, ensuring JSON serializability
+        architecture_diagram_dict = response.architecture_diagram.dict() if response.architecture_diagram else None
+
+        generation_data = {
+            "user_id": user_id,
+            "description": request.description,
+            "provider": request.provider,
+            "files": [file.dict() for file in response.files],
+            "explanation": response.explanation,
+            "resources": response.resources,
+            "estimated_cost": response.estimated_cost,
+            "file_hierarchy": response.file_hierarchy,
+            "architecture_diagram": architecture_diagram_dict,
+            "is_valid_request": response.is_valid_request,
+        }
+
+        # Insert into Supabase
+        await supabase.table("generations").insert(generation_data).execute()
+
+    except Exception as e:
+        # In a real app, you'd want more robust error handling/logging
+        print(f"ERROR: Could not save generation to database: {e}")
+
 # --- Routes ---
 @app.get("/")
 def root():
@@ -814,6 +840,10 @@ async def login(request: LoginRequest):
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
     
+    # Check if the user is active
+    if not user.get("is_active", True): # Default to True for existing users
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled.")
+
     hashed = hashlib.sha256(request.password.encode()).hexdigest()
     if user["password_hash"] != hashed:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
@@ -846,7 +876,7 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
 
     result = await call_ai_model(request.description, request.provider, request.include_diagram)
     
-    return GenerateResponse(
+    response = GenerateResponse(
         files=result["files"],
         explanation=result["explanation"],
         resources=result["resources"],
@@ -858,6 +888,11 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         is_valid_request=result.get("is_valid_request", True),
         architecture_diagram=result.get("architecture_diagram")
     )
+
+    # Save the generation to the database
+    await save_generation(current_user["id"], request, response)
+
+    return response
 
 @app.get("/health")
 def health_check():
