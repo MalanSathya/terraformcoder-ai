@@ -36,7 +36,7 @@ app = FastAPI(title="TerraformCoder AI API")
 # --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://terraformcoder-ai.vercel.app", "https://terraformcoder-ai-git-dev-malans-projects-265337c4.vercel.app", "http://localhost:3000"],
+    allow_origins=["https://terraformcoder-ai.vercel.app", "https://terraformcoder-ai-dev.vercel.app", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -858,6 +858,10 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         is_valid_request=result.get("is_valid_request", True),
         architecture_diagram=result.get("architecture_diagram")
     )
+
+@app.get("/api/test")
+async def test_endpoint():
+    return {"message": "hello from the backend"}
 
 @app.get("/health")
 def health_check():
