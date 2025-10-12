@@ -1,7 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { generateCode } from '../services/api';
-import ThemeToggleButton from '../components/ThemeToggleButton';
 
 // Enhanced UI Components
 import GlassCard from '../components/GlassCard';
@@ -360,7 +359,7 @@ const EnhancedDashboard = () => {
   };
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 font-sans text-white dark:bg-gray-900 dark:text-white">
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 font-sans text-white">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
@@ -383,7 +382,6 @@ const EnhancedDashboard = () => {
         </div>
 
         <div className="flex items-center space-x-3">
-          <ThemeToggleButton />
           <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             <span className="text-slate-300 text-sm">Online</span>
@@ -424,7 +422,7 @@ const EnhancedDashboard = () => {
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full p-4 rounded-xl bg-slate-800/50 backdrop-blur-sm text-white border border-slate-700/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all duration-300 placeholder-slate-400 resize-none font-mono"
+                  className="w-full p-4 rounded-xl bg-slate-800/50 backdrop-blur-sm text-.jsx' to its original state by removing the theme toggle button and dark mode classes.white border border-slate-700/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all duration-300 placeholder-slate-400 resize-none font-mono"
                   rows={5}
                   placeholder="e.g., 'Create a secure AWS VPC with public and private subnets, load balancer, EC2 instances, and RDS database with automated backup and monitoring.'"
                 />
