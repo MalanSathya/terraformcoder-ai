@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // API Base URL - Update this to match your backend deployment
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://terraformcoder-ai-backend-dev.vercel.app';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://terraformcoder-ai-backend.vercel.app';
 
 export { API_BASE_URL };
 

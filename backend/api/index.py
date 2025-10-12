@@ -33,17 +33,6 @@ load_dotenv()
 # --- FastAPI App ---
 app = FastAPI(title="TerraformCoder AI API")
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-
-# --- CORS Middleware ---
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "https://terraformcoder-ai.vercel.app", "http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 
 # --- Security ---
@@ -860,10 +849,6 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         is_valid_request=result.get("is_valid_request", True),
         architecture_diagram=result.get("architecture_diagram")
     )
-
-@app.get("/api/test")
-async def test_endpoint():
-    return {"message": "hello from the backend"}
 
 @app.get("/health")
 def health_check():
