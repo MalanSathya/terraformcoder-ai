@@ -33,10 +33,12 @@ load_dotenv()
 # --- FastAPI App ---
 app = FastAPI(title="TerraformCoder AI API")
 
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
 # --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://terraformcoder-ai.vercel.app", "https://terraformcoder-ai-dev.vercel.app", "http://localhost:3000"],
+    allow_origins=[FRONTEND_URL, "https://terraformcoder-ai.vercel.app", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
