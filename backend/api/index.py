@@ -724,30 +724,19 @@ Optionally include additional files as needed:
 #    - Add a composite index on `(user_id, created_at)`.
 
 async def create_user(email: str, name: str, password: str):
-    """Create a new user in Supabase using Supabase Auth"""
+    """Create a new user in Supabase using admin privileges"""
     try:
-        # Use Supabase's built-in sign_up method
-        response = supabase.auth.sign_up({
+        # Use Supabase's admin method to create a user.
+        # This requires the Supabase client to be initialized with the service_role key.
+        user = supabase.auth.admin.create_user({
             "email": email.lower(),
             "password": password,
-            "options": {
-                "data": {
-                    "name": name
-                }
-            }
+            "email_confirm": True,  # Auto-confirm the user
+            "user_metadata": {"name": name},
         })
-        
-        if response.user:
-            # Supabase's sign_up returns a user object directly
-            return response.user
-        
-        # If sign_up fails but doesn't raise an exception, check for errors in the response
-        if response.session is None and response.user is None:
-            print(f"Supabase sign_up response: {response}")
-            return None
-
+        return user
     except Exception as e:
-        print(f"Supabase Auth sign_up error: {e}")
+        print(f"Supabase admin create_user error: {e}")
         return None
 
 async def get_user_by_email(email: str):
