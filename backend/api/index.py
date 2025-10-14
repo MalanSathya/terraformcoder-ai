@@ -856,16 +856,15 @@ async def register(request: RegisterRequest):
     if not auth_user:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create auth user.")
 
-    print(f"Auth user {auth_user.email} created successfully.")
+    print(f"Auth user for {request.email} created successfully.")
 
     # 2. Manually create the user profile in public.users
     try:
         user_id = str(auth_user.id)
-        user_email = auth_user.email or ""
         
         profile_result = supabase.table("users").insert({
             "id": user_id,
-            "email": user_email,
+            "email": request.email,
             "name": request.name,
         }).execute()
 
@@ -878,7 +877,7 @@ async def register(request: RegisterRequest):
         await supabase.auth.admin.delete_user(auth_user.id)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create user profile: {e}")
 
-    print(f"User profile for {user_email} created successfully.")
+    print(f"User profile for {request.email} created successfully.")
 
     # 3. Create access token
     token = create_access_token({"sub": user_id})
@@ -886,7 +885,7 @@ async def register(request: RegisterRequest):
     # 4. Return response
     return AuthResponse(
         message="User registered successfully",
-        user={"id": user_id, "email": user_email, "name": request.name},
+        user={"id": user_id, "email": request.email, "name": request.name},
         access_token=token
     )
 
