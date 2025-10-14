@@ -851,23 +851,42 @@ async def register(request: RegisterRequest):
         print(f"User {request.email} already exists.")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists.")
 
-    user = await create_user(request.email, request.name, request.password)
-    if not user:
-        print(f"Failed to create user: {request.email}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user.")
+    # 1. Create the user in Supabase Auth
+    auth_user = await create_user(request.email, request.name, request.password)
+    if not auth_user:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create auth user.")
 
-    print(f"User {request.email} created successfully.")
-    
-    user_data = user.dict()
-    user_id = str(user_data.get("id"))
-    user_email = user_data.get("email") or ""
-    user_name = user_data.get("user_metadata", {}).get("name", "User")
+    print(f"Auth user {auth_user.email} created successfully.")
 
+    # 2. Manually create the user profile in public.users
+    try:
+        user_id = str(auth_user.id)
+        user_email = auth_user.email or ""
+        
+        profile_result = supabase.table("users").insert({
+            "id": user_id,
+            "email": user_email,
+            "name": request.name,
+        }).execute()
+
+        if not profile_result.data:
+            raise Exception("Failed to create user profile in public table.")
+
+    except Exception as e:
+        print(f"Error creating user profile, cleaning up auth user: {e}")
+        # Clean up the created auth user if profile creation fails
+        await supabase.auth.admin.delete_user(auth_user.id)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create user profile: {e}")
+
+    print(f"User profile for {user_email} created successfully.")
+
+    # 3. Create access token
     token = create_access_token({"sub": user_id})
 
+    # 4. Return response
     return AuthResponse(
         message="User registered successfully",
-        user={"id": user_id, "email": user_email, "name": user_name},
+        user={"id": user_id, "email": user_email, "name": request.name},
         access_token=token
     )
 
