@@ -843,7 +843,7 @@ async def register(request: RegisterRequest):
     
     # Extract user details safely
     user_id = str(user.id)
-    user_email = user.email
+    user_email = user.email or ""  # Ensure email is a string
     user_name = "User" # Default name
     if user.user_metadata:
         user_name = user.user_metadata.get("name", user_name)
