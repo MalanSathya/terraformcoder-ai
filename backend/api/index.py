@@ -53,7 +53,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 # --- Supabase Client ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+# Check for the user-provided key name first, then fall back to the previous name.
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
 
 try:
     if not SUPABASE_URL or not SUPABASE_KEY:
