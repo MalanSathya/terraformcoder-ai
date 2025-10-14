@@ -53,11 +53,19 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 # --- Supabase Client ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 try:
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables")
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Use service key for backend operations to bypass RLS for user creation
+    if SUPABASE_SERVICE_KEY:
+        print("Initializing Supabase client with service key.")
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    else:
+        print("Initializing Supabase client with anon key.")
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except Exception as e:
     print(f"Error connecting to Supabase: {e}")
     supabase = None
@@ -716,20 +724,30 @@ Optionally include additional files as needed:
 #    - Add a composite index on `(user_id, created_at)`.
 
 async def create_user(email: str, name: str, password: str):
-    """Create a new user in Supabase"""
+    """Create a new user in Supabase using Supabase Auth"""
     try:
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        user_data = {
+        # Use Supabase's built-in sign_up method
+        response = supabase.auth.sign_up({
             "email": email.lower(),
-            "name": name,
-            "password_hash": password_hash
-        }
-        result = supabase.table("users").insert(user_data).execute()
-        if result.data:
-            return result.data[0]
-        return None
+            "password": password,
+            "options": {
+                "data": {
+                    "name": name
+                }
+            }
+        })
+        
+        if response.user:
+            # Supabase's sign_up returns a user object directly
+            return response.user
+        
+        # If sign_up fails but doesn't raise an exception, check for errors in the response
+        if response.session is None and response.user is None:
+            print(f"Supabase sign_up response: {response}")
+            return None
+
     except Exception as e:
-        print(f"Database error creating user: {e}")
+        print(f"Supabase Auth sign_up error: {e}")
         return None
 
 async def get_user_by_email(email: str):
@@ -832,40 +850,53 @@ async def register(request: RegisterRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user.")
 
     print(f"User {request.email} created successfully.")
-    token = create_access_token({"sub": str(user["id"])})
+    
+    # Extract user details safely
+    user_id = str(user.id)
+    user_email = user.email
+    user_name = "User" # Default name
+    if user.user_metadata:
+        user_name = user.user_metadata.get("name", user_name)
+
+    token = create_access_token({"sub": user_id})
 
     return AuthResponse(
         message="User registered successfully",
-        user={"id": str(user["id"]), "email": user["email"], "name": user["name"]},
+        user={"id": user_id, "email": user_email, "name": user_name},
         access_token=token
     )
 
 @app.post("/api/auth/login", response_model=AuthResponse)
 async def login(request: LoginRequest):
     """
-    Logs in a user.
-    NOTE: This function assumes that there is a boolean field `is_rls_enabled` in the `users` table.
-    Make sure to adjust your RLS rules in Supabase to allow users to log in only when this field is false.
+    Logs in a user using Supabase Auth.
     """
-    user = await get_user_by_email(request.email)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
-    
-    # Check if RLS is enabled for the user
-    if user.get("is_rls_enabled", False):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Login is disabled for this user.")
+    try:
+        response = supabase.auth.sign_in_with_password({
+            "email": request.email.lower(),
+            "password": request.password,
+        })
 
-    hashed = hashlib.sha256(request.password.encode()).hexdigest()
-    if user["password_hash"] != hashed:
+        if response.user and response.session:
+            user_data = response.user.dict()
+            # Supabase user metadata is in user_metadata
+            user_name = user_data.get("user_metadata", {}).get("name", "User")
+            
+            token = create_access_token({"sub": str(user_data["id"])})
+
+            return AuthResponse(
+                message="Login successful",
+                user={"id": str(user_data["id"]), "email": user_data["email"], "name": user_name},
+                access_token=token
+            )
+        else:
+            # Handle cases where sign_in_with_password doesn't return user/session but no exception
+            print(f"Supabase sign_in_with_password response: {response}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+
+    except Exception as e:
+        print(f"Supabase Auth sign_in_with_password error: {e}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
-    
-    token = create_access_token({"sub": str(user["id"])})
-    
-    return AuthResponse(
-        message="Login successful",
-        user={"id": str(user["id"]), "email": user["email"], "name": user["name"]},
-        access_token=token
-    )
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate(request: GenerateRequest, current_user: Dict = Depends(get_current_user)):
@@ -958,8 +989,7 @@ async def render_mermaid(
                 api_url,
                 headers={
                     "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
+                    "Content-Type": "application/json"
                 },
                 json={
                     "code": payload.get("code"),
