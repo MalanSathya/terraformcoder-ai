@@ -852,10 +852,11 @@ async def register(request: RegisterRequest):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists.")
 
     # 1. Create the user in Supabase Auth
-    auth_user = await create_user(request.email, request.name, request.password)
-    if not auth_user:
+    response = await create_user(request.email, request.name, request.password)
+    if not response or not response.user:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create auth user.")
 
+    auth_user = response.user
     print(f"Auth user for {request.email} created successfully.")
 
     # 2. Manually create the user profile in public.users
@@ -874,7 +875,7 @@ async def register(request: RegisterRequest):
     except Exception as e:
         print(f"Error creating user profile, cleaning up auth user: {e}")
         # Clean up the created auth user if profile creation fails
-        await supabase.auth.admin.delete_user(auth_user.id)
+        await supabase.auth.admin.delete_user(user_id=auth_user.id)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create user profile: {e}")
 
     print(f"User profile for {request.email} created successfully.")
