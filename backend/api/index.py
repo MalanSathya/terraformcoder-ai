@@ -47,6 +47,8 @@ app.add_middleware(
 # --- Security ---
 security = HTTPBearer()
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")  # Replace in prod
+if not SECRET_KEY:
+    raise ValueError("JWT_SECRET_KEY must be set in environment variables for token generation.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
@@ -841,12 +843,10 @@ async def register(request: RegisterRequest):
 
     print(f"User {request.email} created successfully.")
     
-    # Extract user details safely
-    user_id = str(user.id)
-    user_email = user.email or ""  # Ensure email is a string
-    user_name = "User" # Default name
-    if user.user_metadata:
-        user_name = user.user_metadata.get("name", user_name)
+    user_data = user.dict()
+    user_id = str(user_data.get("id"))
+    user_email = user_data.get("email") or ""
+    user_name = user_data.get("user_metadata", {}).get("name", "User")
 
     token = create_access_token({"sub": user_id})
 
