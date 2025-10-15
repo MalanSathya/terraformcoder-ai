@@ -360,13 +360,22 @@ const EnhancedDashboard = () => {
   };
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-white to-gray-100 dark:from-slate-900 dark:via-purple-900 dark:to-slate-900 font-sans text-gray-800 dark:text-white">
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-emerald-500 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse delay-2000"></div>
-      </div>
+
+    <div
+  className="relative min-h-screen 
+  bg-gradient-to-br 
+  from-purple-100 via-indigo-100 to-cyan-100   /* lighter gradient for light mode */
+  dark:from-slate-900 dark:via-purple-900 dark:to-slate-900  /* current dark mode */
+  font-sans text-gray-800 dark:text-white 
+  transition-colors duration-500 ease-in-out"
+>
+  {/* Animated background elements */}
+  <div className="absolute inset-0 overflow-hidden">
+    <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+    <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
+    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-emerald-500 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse delay-2000"></div>
+  </div>
+
 
       {/* Header */}
       <header className="relative z-10 flex items-center justify-between p-6">
@@ -384,11 +393,7 @@ const EnhancedDashboard = () => {
 
         <div className="flex items-center space-x-3">
           <ThemeToggle />
-          <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50">
-            {/* <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            {/* <span className="text-slate-300 text-sm">Online</span> */}
-          </div> 
-          
+           
           <button
             onClick={logout}
             className="group relative px-4 py-2 bg-slate-800/50 backdrop-blur-md text-white border border-slate-700/50 rounded-xl shadow-lg hover:bg-slate-700/50 transition-all duration-300 hover:scale-105"
