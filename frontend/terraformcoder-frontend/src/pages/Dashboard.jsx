@@ -385,9 +385,9 @@ const EnhancedDashboard = () => {
         <div className="flex items-center space-x-3">
           <ThemeToggle />
           <div className="hidden sm:flex items-center space-x-2 px-3 py-1 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            {/* <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             {/* <span className="text-slate-300 text-sm">Online</span> */}
-          </div>
+          </div> 
           
           <button
             onClick={logout}
