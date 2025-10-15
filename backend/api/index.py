@@ -764,21 +764,6 @@ async def get_user_by_id(user_id: str):
         print(f"Database error getting user by ID: {e}")
         return None
 
-async def create_user_profile(user_id: str, email: str, name: str):
-    """Create a user profile in the public.users table."""
-    try:
-        result = supabase.table("users").insert({
-            "id": user_id,
-            "email": email,
-            "name": name,
-        }).execute()
-        if result.data:
-            return result.data[0]
-        return None
-    except Exception as e:
-        print(f"Database error creating user profile: {e}")
-        return None
-
 async def save_generation(user_id: str, request: GenerateRequest, response: GenerateResponse):
     """Save a generation to the database."""
     try:
@@ -859,31 +844,12 @@ async def register(request: RegisterRequest):
     auth_user = response.user
     print(f"Auth user for {request.email} created successfully.")
 
-    # 2. Manually create the user profile in public.users
-    try:
-        user_id = str(auth_user.id)
-        
-        profile_result = supabase.table("users").insert({
-            "id": user_id,
-            "email": request.email,
-            "name": request.name,
-        }).execute()
+    user_id = str(auth_user.id)
 
-        if not profile_result.data:
-            raise Exception("Failed to create user profile in public table.")
-
-    except Exception as e:
-        print(f"Error creating user profile, cleaning up auth user: {e}")
-        # Clean up the created auth user if profile creation fails
-        await supabase.auth.admin.delete_user(user_id=auth_user.id)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create user profile: {e}")
-
-    print(f"User profile for {request.email} created successfully.")
-
-    # 3. Create access token
+    # 2. Create access token
     token = create_access_token({"sub": user_id})
 
-    # 4. Return response
+    # 3. Return response
     return AuthResponse(
         message="User registered successfully",
         user={"id": user_id, "email": request.email, "name": request.name},
