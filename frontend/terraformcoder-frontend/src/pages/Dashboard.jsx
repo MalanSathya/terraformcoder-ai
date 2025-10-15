@@ -361,14 +361,11 @@ const EnhancedDashboard = () => {
 
   return (
 
-    <div
-  className="relative min-h-screen 
-  bg-gradient-to-br 
-  from-purple-100 via-indigo-100 to-cyan-100   /* lighter gradient for light mode */
-  dark:from-slate-900 dark:via-purple-900 dark:to-slate-900  /* current dark mode */
-  font-sans text-gray-800 dark:text-white 
-  transition-colors duration-500 ease-in-out"
->
+    <div className="relative min-h-screen bg-gradient-to-br 
+  from-purple-100 via-indigo-100 to-cyan-100 
+  dark:from-slate-900 dark:via-purple-900 dark:to-slate-900 
+  font-sans text-black dark:text-white transition-colors duration-500 ease-in-out">
+
   {/* Animated background elements */}
   <div className="absolute inset-0 overflow-hidden">
     <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
