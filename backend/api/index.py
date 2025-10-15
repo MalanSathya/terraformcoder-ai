@@ -764,20 +764,20 @@ async def get_user_by_id(user_id: str):
         print(f"Database error getting user by ID: {e}")
         return None
 
-async def create_user_profile(user_id: str, email: str, name: str):
-    """Create a user profile in the public.users table."""
-    try:
-        result = supabase.table("users").insert({
-            "id": user_id,
-            "email": email,
-            "name": name,
-        }).execute()
-        if result.data:
-            return result.data[0]
-        return None
-    except Exception as e:
-        print(f"Database error creating user profile: {e}")
-        return None
+# async def create_user_profile(user_id: str, email: str, name: str):
+#     """Create a user profile in the public.users table."""
+#     try:
+#         result = supabase.table("users").insert({
+#             "id": user_id,
+#             "email": email,
+#             "name": name,
+#         }).execute()
+#         if result.data:
+#             return result.data[0]
+#         return None
+#     except Exception as e:
+#         print(f"Database error creating user profile: {e}")
+#         return None
 
 async def save_generation(user_id: str, request: GenerateRequest, response: GenerateResponse):
     """Save a generation to the database."""
