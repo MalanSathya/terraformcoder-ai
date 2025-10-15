@@ -7,5 +7,22 @@ body {
 }
 
 body {
-  @apply bg-gradient-to-br from-gray-900 to-black text-white;
+  @apply bg-lightBackground text-lightText dark:bg-gradient-to-br dark:from-gray-900 dark:to-black dark:text-white;
+}
+
+/* Custom styling for the ThemeToggle switch */
+.sr-only + div { /* The track */
+  transition: background-color 0.2s;
+}
+
+.sr-only:checked + div { /* Track when checked (dark mode) */
+  background-color: #4a5568; /* Tailwind gray-700 */
+}
+
+.sr-only ~ .dot { /* The movable dot */
+  transition: transform 0.2s;
+}
+
+.sr-only:checked ~ .dot { /* Dot when checked (dark mode) */
+  transform: translateX(1.5rem); /* Move 1.5rem (24px) to the right */
 }

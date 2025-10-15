@@ -9,6 +9,8 @@ module.exports = {
       colors: {
         glass: 'rgba(255, 255, 255, 0.1)',
         borderGlass: 'rgba(255, 255, 255, 0.2)',
+        lightBackground: '#e0e7ff', // A very light blue-gray
+        lightText: '#1a202c', // A dark gray for text
       },
     },
   },
