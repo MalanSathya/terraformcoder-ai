@@ -717,11 +717,15 @@ Optionally include additional files as needed:
                         print(f"WARNING: Could not decode JSON: {e}")
                         metadata = {}
         
-        # Generate architecture diagram if requested
+        # Generate architecture diagram (static fallback to avoid second Mistral call / timeout)
         architecture_diagram = None
         if include_diagram:
             resources = metadata.get("resources", [])
-            architecture_diagram = await generate_architecture_diagram(description, resources, provider)
+            try:
+                architecture_diagram = await generate_architecture_diagram(description, resources, provider)
+            except Exception as diag_err:
+                print(f"WARNING: Diagram generation failed, skipping: {diag_err}")
+                architecture_diagram = None
         
         result = {
             "files": processed_files,
@@ -827,18 +831,22 @@ async def increment_usage(user_id: str):
 async def save_generation(user_id: str, request: GenerateRequest, response: GenerateResponse):
     """Save a generation to the database."""
     try:
+        # Convert files list to JSON string for the 'code' column (matches DB schema)
+        files_as_json = json.dumps([file.dict() for file in response.files])
         generation_data = {
             "user_id": user_id,
             "description": request.description,
             "provider": request.provider,
-            "estimated_cost": response.estimated_cost,
-            "files": [file.dict() for file in response.files],
+            "estimated_cost": response.estimated_cost or "Unknown",
+            "code": files_as_json,
             "explanation": response.explanation,
-            "resources": response.resources,
-            "file_hierarchy": response.file_hierarchy,
+            "resources": response.resources if response.resources else [],
+            "file_hierarchy": response.file_hierarchy or "",
             "architecture_diagram": response.architecture_diagram.dict() if response.architecture_diagram else None,
         }
+        print(f"Saving generation for user {user_id}...")
         result = supabase.table("generations").insert(generation_data).execute()
+        print(f"Generation saved successfully: {result.data[0]['id'] if result.data else 'no data'}")
         if result.data:
             return result.data[0]
         return None
@@ -846,42 +854,8 @@ async def save_generation(user_id: str, request: GenerateRequest, response: Gene
         print(f"Database error saving generation: {e}")
         return None
 
-async def get_user_by_email(email: str) -> Optional[Dict]:
-    """Fetch a user by email from the public users table"""
-    try:
-        if not supabase: return None
-        result = supabase.table("users").select("*").eq("email", email).execute()
-        if result.data: return result.data[0]
-        return None
-    except Exception:
-        return None
 
-async def get_user_by_id(user_id: str) -> Optional[Dict]:
-    """Fetch a user by ID from the public users table"""
-    try:
-        if not supabase: return None
-        result = supabase.table("users").select("*").eq("id", user_id).execute()
-        if result.data: return result.data[0]
-        return None
-    except Exception:
-        return None
 
-async def create_user(email: str, name: str, password: str):
-    """Register a new user using Supabase Auth"""
-    try:
-        response = supabase.auth.sign_up({
-            "email": email,
-            "password": password,
-            "options": {
-                "data": {
-                    "name": name
-                }
-            }
-        })
-        return response
-    except Exception as e:
-        print(f"Registration error: {e}")
-        raise e
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -987,54 +961,67 @@ async def login(request: LoginRequest):
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate(request: GenerateRequest, current_user: Dict = Depends(get_current_user)):
-    if not request.description.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Description cannot be empty.")
+    print(f"=== GENERATE START === user={current_user.get('id')} desc={request.description[:50]}")
+    try:
+        if not request.description.strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Description cannot be empty.")
 
-    if not is_valid_infrastructure_request(request.description):
-        return GenerateResponse(
-            files=[],
-            explanation="⚠️ Please provide a clear description of your cloud infrastructure requirements.",
-            resources=[],
-            estimated_cost="Unknown",
+        if not is_valid_infrastructure_request(request.description):
+            print("Invalid infrastructure request")
+            return GenerateResponse(
+                files=[],
+                explanation="⚠️ Please provide a clear description of your cloud infrastructure requirements.",
+                resources=[],
+                estimated_cost="Unknown",
+                provider=request.provider,
+                generated_at=datetime.utcnow().isoformat(),
+                cached_response=False,
+                file_hierarchy="",
+                is_valid_request=False
+            )
+
+        # Enforce Quota
+        print("Checking quota...")
+        has_quota = await check_quota(current_user["id"])
+        if not has_quota:
+            raise HTTPException(status_code=429, detail="Monthly generation limit reached. Upgrade to Pro for unlimited generations.")
+        print("Quota OK, calling AI model...")
+
+        result = await call_ai_model(request.description, request.provider, request.include_diagram)
+        print(f"AI model returned {len(result.get('files', []))} files")
+        
+        # Build the response object without the ID first
+        response_obj = GenerateResponse(
+            files=result["files"],
+            explanation=result["explanation"],
+            resources=result["resources"],
+            estimated_cost=result["estimated_cost"],
             provider=request.provider,
             generated_at=datetime.utcnow().isoformat(),
-            cached_response=False,
-            file_hierarchy="",
-            is_valid_request=False
+            cached_response=result.get("cached_response", False),
+            file_hierarchy=result["file_hierarchy"],
+            is_valid_request=result.get("is_valid_request", True),
+            architecture_diagram=result.get("architecture_diagram")
         )
-
-    # Enforce Quota
-    has_quota = await check_quota(current_user["id"])
-    if not has_quota:
-        raise HTTPException(status_code=429, detail="Monthly generation limit reached. Upgrade to Pro for unlimited generations.")
-
-    result = await call_ai_model(request.description, request.provider, request.include_diagram)
-    
-    # Build the response object without the ID first
-    response_obj = GenerateResponse(
-        files=result["files"],
-        explanation=result["explanation"],
-        resources=result["resources"],
-        estimated_cost=result["estimated_cost"],
-        provider=request.provider,
-        generated_at=datetime.utcnow().isoformat(),
-        cached_response=result.get("cached_response", False),
-        file_hierarchy=result["file_hierarchy"],
-        is_valid_request=result.get("is_valid_request", True),
-        architecture_diagram=result.get("architecture_diagram")
-    )
-    
-    # Save the generation to Supabase
-    saved_generation = await save_generation(current_user["id"], request, response_obj)
-    
-    # Increment usage count after successful generation
-    await increment_usage(current_user["id"])
-    
-    # Add the ID to the response if it was successfully saved
-    if saved_generation and "id" in saved_generation:
-        response_obj.id = saved_generation["id"]
+        print("Response object built, saving to DB...")
         
-    return response_obj
+        # Save the generation to Supabase
+        saved_generation = await save_generation(current_user["id"], request, response_obj)
+        
+        # Increment usage count after successful generation
+        await increment_usage(current_user["id"])
+        
+        # Add the ID to the response if it was successfully saved
+        if saved_generation and "id" in saved_generation:
+            response_obj.id = saved_generation["id"]
+        
+        print(f"=== GENERATE SUCCESS ===")
+        return response_obj
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"=== GENERATE CRASHED === {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 @app.get("/health")
 def health_check():
