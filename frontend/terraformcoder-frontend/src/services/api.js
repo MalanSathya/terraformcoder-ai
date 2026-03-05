@@ -12,7 +12,7 @@ export const login = async (data) => axios.post(`${API_BASE_URL}/api/auth/login`
 const api = axios.create({
   baseURL: API_BASE_URL,
 
-  timeout: 30000, // Increased timeout for AI processing
+  timeout: 120000, // 120s timeout for AI processing (Vercel maxDuration is 60s)
 
   headers: {
     'Content-Type': 'application/json',
