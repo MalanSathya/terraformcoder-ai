@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Check, X, Loader, Shield, Zap, Infinity } from 'lucide-react';
+import { Sparkles, X, Loader, Shield, Zap, Infinity } from 'lucide-react';
 import { API_BASE_URL } from '../services/api';
 
 const UpgradeModal = ({ isOpen, onClose }) => {

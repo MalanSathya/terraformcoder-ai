@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import mermaid from 'mermaid';
-import { 
-  ChevronDownIcon, 
-  ChevronUpIcon, 
-  Eye, 
-  CloudIcon, 
-  NetworkIcon, 
-  ArrowRight, 
-  ExternalLink, 
-  Copy, 
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  Eye,
+  CloudIcon,
+  NetworkIcon,
+  ArrowRight,
+  ExternalLink,
+  Copy,
   Download,
   Maximize2,
   RefreshCw
@@ -18,38 +18,19 @@ import GlassCard from './GlassCard';
 const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, description }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [diagramError, setDiagramError] = useState(false);
-  const [isLoadingChart, setIsLoadingChart] = useState(false);
   const mermaidRef = useRef(null);
 
   useEffect(() => {
     if (architectureDiagram?.diagram_mermaid_syntax && mermaidRef.current) {
       renderMermaidDiagram();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [architectureDiagram?.diagram_mermaid_syntax]);
-
-  async function fetchMermaidSecure(code) {
-  try {
-    const res = await fetch('/api/mermaid/render', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-      },
-      body: JSON.stringify({ code, format: 'svg', theme: 'dark' })
-    });
-
-    if (!res.ok) throw new Error(await res.text());
-    const svgText = await res.text();
-    mermaidRef.current.innerHTML = svgText;
-  } catch (err) {
-    console.error("Secure Mermaid render failed:", err);
-  }
-}
 
   const renderMermaidDiagram = async () => {
     try {
       setDiagramError(false);
-      mermaid.initialize({ 
+      mermaid.initialize({
         startOnLoad: false,
         theme: 'dark',
         themeVariables: {
@@ -61,10 +42,10 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
           tertiaryColor: '#334155'
         }
       });
-      
+
       const diagramId = `mermaid-diagram-${Date.now()}`;
       const { svg } = await mermaid.render(diagramId, architectureDiagram.diagram_mermaid_syntax);
-      
+
       if (mermaidRef.current) {
         mermaidRef.current.innerHTML = svg;
       }
@@ -152,7 +133,7 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
 
   return (
     <GlassCard className="mb-6">
-      <div 
+      <div
         className="flex items-center justify-between cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -194,13 +175,13 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
               </button>
             </div>
           )}
-          {isExpanded ? 
-            <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : 
+          {isExpanded ?
+            <ChevronUpIcon className="w-5 h-5 text-slate-400" /> :
             <ChevronDownIcon className="w-5 h-5 text-slate-400" />
           }
         </div>
       </div>
-      
+
       {isExpanded && (
         <div className="mt-6">
           {/* Enhanced Diagram Display Section */}
@@ -211,7 +192,7 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
                 <NetworkIcon className="w-5 h-5 text-blue-400" />
                 <h4 className="font-semibold text-slate-200">Infrastructure Architecture</h4>
               </div>
-              
+
               {/* Mermaid Chart Integration */}
               {architectureDiagram?.mermaid_chart_url && (
                 <div className="flex items-center space-x-2">
@@ -232,13 +213,13 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
             {/* Diagram Display */}
             {architectureDiagram?.diagram_mermaid_syntax ? (
               <div className="relative">
-                <div 
-                  ref={mermaidRef} 
+                <div
+                  ref={mermaidRef}
                   className="mermaid-diagram-container text-slate-300 flex justify-center items-center min-h-[300px] bg-slate-900/50 rounded-lg border border-slate-700/30 overflow-auto"
                 >
                   {/* Mermaid diagram will be rendered here */}
                 </div>
-                
+
                 {/* Diagram Controls */}
                 <div className="absolute top-3 right-3 flex items-center space-x-2">
                   <button
