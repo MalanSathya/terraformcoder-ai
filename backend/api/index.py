@@ -45,6 +45,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from starlette.requests import Request
+from fastapi.responses import JSONResponse
+import traceback
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
+    print(f"GLOBAL ERROR: {tb}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error": str(exc), "traceback": tb}
+    )
+
+
 
 
 # --- Security ---
@@ -481,8 +495,17 @@ async def process_generated_files(parsed_files: List[Dict[str, str]]) -> List[Fi
         # Classify file
         file_type, category = classify_file_type(filename, content)
         
-        # Generate explanation
-        explanation = await generate_file_explanation(filename, content, file_type, category)
+        # Static explanation (bypasses LLM round-trip to drastically reduce Vercel latency)
+        if filename == "main.tf":
+            explanation = "Core infrastructure resources definition."
+        elif filename == "variables.tf":
+            explanation = "Input variables for the infrastructure."
+        elif filename == "outputs.tf":
+            explanation = "Outputs exported by the infrastructure."
+        elif filename == "providers.tf":
+            explanation = "Cloud provider configuration."
+        else:
+            explanation = f"Configuration file for {category} components."
         
         processed_files.append(FileContent(
             filename=filename,
