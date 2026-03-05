@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi import Body
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timedelta
@@ -12,9 +12,12 @@ import base64
 import os
 import json
 import jwt
-import httpx
-import re
+import zipfile
+import io
+import stripe
 from jwt.exceptions import PyJWTError
+
+stripe.api_key = os.getenv("STRIPE_API_KEY")
 try:
     from mistralai.client import MistralClient
     from mistralai.models import ChatMessage
@@ -109,6 +112,7 @@ class GenerateRequest(BaseModel):
     include_diagram: bool = True
 
 class GenerateResponse(BaseModel):
+    id: Optional[str] = None
     files: List[FileContent] = []
     explanation: str
     resources: List[str]
@@ -764,6 +768,39 @@ async def get_user_by_id(user_id: str):
         print(f"Database error getting user by ID: {e}")
         return None
 
+async def check_quota(user_id: str) -> bool:
+    """Check if the user has reached their monthly free generation limit."""
+    try:
+        # Check plan
+        sub_result = supabase.table("subscriptions").select("plan").eq("user_id", user_id).execute()
+        plan = "free"
+        if sub_result.data:
+            plan = sub_result.data[0].get("plan", "free")
+            
+        if plan != "free":
+            return True # Pro users have no limit
+            
+        # Check usage for current month
+        current_month = datetime.utcnow().strftime('%Y-%m')
+        usage_result = supabase.table("usage").select("generation_count").eq("user_id", user_id).eq("month", current_month).execute()
+        
+        if usage_result.data and usage_result.data[0].get("generation_count", 0) >= 5:
+            return False
+            
+        return True
+    except Exception as e:
+        print(f"Error checking quota: {e}")
+        return True # Default to allow on error so we don't block users if DB fails briefly
+
+async def increment_usage(user_id: str):
+    """Increment the generation usage count for the current month."""
+    try:
+        current_month = datetime.utcnow().strftime('%Y-%m')
+        # Use the RPC function created in the SQL schema
+        supabase.rpc('increment_usage_count', {'p_user_id': user_id, 'p_month': current_month}).execute()
+    except Exception as e:
+        print(f"Error incrementing usage: {e}")
+
 async def save_generation(user_id: str, request: GenerateRequest, response: GenerateResponse):
     """Save a generation to the database."""
     try:
@@ -906,9 +943,15 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
             is_valid_request=False
         )
 
+    # Enforce Quota
+    has_quota = await check_quota(current_user["id"])
+    if not has_quota:
+        raise HTTPException(status_code=429, detail="Monthly generation limit reached. Upgrade to Pro for unlimited generations.")
+
     result = await call_ai_model(request.description, request.provider, request.include_diagram)
     
-    return GenerateResponse(
+    # Build the response object without the ID first
+    response_obj = GenerateResponse(
         files=result["files"],
         explanation=result["explanation"],
         resources=result["resources"],
@@ -920,6 +963,18 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         is_valid_request=result.get("is_valid_request", True),
         architecture_diagram=result.get("architecture_diagram")
     )
+    
+    # Save the generation to Supabase
+    saved_generation = await save_generation(current_user["id"], request, response_obj)
+    
+    # Increment usage count after successful generation
+    await increment_usage(current_user["id"])
+    
+    # Add the ID to the response if it was successfully saved
+    if saved_generation and "id" in saved_generation:
+        response_obj.id = saved_generation["id"]
+        
+    return response_obj
 
 @app.get("/health")
 def health_check():
@@ -929,13 +984,216 @@ class GenerationHistory(BaseModel):
     id: str
     description: str
     provider: str
+    estimated_cost: str
     created_at: str
 
 @app.get("/api/history", response_model=List[GenerationHistory])
-async def get_history(current_user: Dict = Depends(get_current_user)):
-    # This is a placeholder endpoint.
-    # In a real application, you would fetch the history from the database.
-    return []
+async def get_history(limit: int = 20, offset: int = 0, current_user: Dict = Depends(get_current_user)):
+    try:
+        response = supabase.table("generations") \
+            .select("id, description, provider, estimated_cost, created_at") \
+            .eq("user_id", current_user["id"]) \
+            .order("created_at", desc=True) \
+            .range(offset, offset + limit - 1) \
+            .execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch generation history.")
+
+@app.get("/api/history/{generation_id}", response_model=GenerateResponse)
+async def get_generation_by_id(generation_id: str, current_user: Dict = Depends(get_current_user)):
+    try:
+        response = supabase.table("generations") \
+            .select("*") \
+            .eq("id", generation_id) \
+            .eq("user_id", current_user["id"]) \
+            .execute()
+            
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Generation not found or access denied.")
+            
+        data = response.data[0]
+        
+        # Convert dictionary formats back to models
+        architecture_diagram = None
+        if data.get("architecture_diagram"):
+            architecture_diagram = ArchitectureDiagram(**data["architecture_diagram"])
+            
+        files = []
+        if data.get("files"):
+            files = [FileContent(**f) for f in data["files"]]
+            
+        # Ensure we return valid JSON by removing any problematic data
+        # Check resources
+        resources = []
+        if data.get("resources") and isinstance(data["resources"], list):
+            resources = data["resources"]
+            
+        # Reconstruct GenerateResponse
+        return GenerateResponse(
+            id=data["id"],
+            files=files,
+            explanation=data.get("explanation", ""),
+            resources=resources,
+            estimated_cost=data.get("estimated_cost", "Unknown"),
+            provider=data.get("provider", "aws"),
+            generated_at=data.get("created_at", ""),
+            cached_response=True, # Since we fetched it from DB, it's essentially cached
+            file_hierarchy=data.get("file_hierarchy", ""),
+            is_valid_request=True,
+            architecture_diagram=architecture_diagram
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching generation {generation_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch generation details.")
+
+@app.get("/api/download/{generation_id}")
+async def download_generation_zip(generation_id: str, current_user: Dict = Depends(get_current_user)):
+    try:
+        response = supabase.table("generations") \
+            .select("files, description, provider") \
+            .eq("id", generation_id) \
+            .eq("user_id", current_user["id"]) \
+            .execute()
+            
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Generation not found or access denied.")
+            
+        data = response.data[0]
+        files = data.get("files", [])
+        description = data.get("description", "No description provided.")
+        provider = data.get("provider", "Unknown")
+        
+        # Build ZIP in memory
+        zip_io = io.BytesIO()
+        with zipfile.ZipFile(zip_io, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+            # Add files
+            for file in files:
+                zf.writestr(file["filename"], file["content"])
+                
+            # Add README
+            readme_content = f"# TerraformCoder AI Generation\n\n**Provider**: {provider}\n\n**Description**:\n{description}\n\nGenerated by AI. Please review the code before deployment."
+            zf.writestr("README.md", readme_content)
+            
+        # Prepare response
+        zip_io.seek(0)
+        short_id = str(generation_id)[:8]
+        headers = {
+            'Content-Disposition': f'attachment; filename="terraform-{short_id}.zip"'
+        }
+        
+        return StreamingResponse(
+            zip_io, 
+            media_type="application/zip", 
+            headers=headers
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating ZIP for generation {generation_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create ZIP file.")
+
+@app.post("/api/billing/checkout")
+async def create_checkout_session(current_user: Dict = Depends(get_current_user)):
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price': os.getenv("STRIPE_PRO_PRICE_ID"),
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url=f"https://terraformcoder-ai.vercel.app?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"https://terraformcoder-ai.vercel.app",
+            customer_email=current_user.get("email"),
+            metadata={
+                'user_id': current_user["id"]
+            }
+        )
+        return {"checkout_url": session.url}
+    except Exception as e:
+        print(f"Stripe checkout error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create checkout session.")
+
+from fastapi import Request
+
+@app.post("/api/billing/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+    
+    if not endpoint_secret:
+        return Response(content="Webhook secret not configured.", status_code=400)
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, endpoint_secret
+        )
+    except ValueError as e:
+        print(f"Invalid payload: {e}")
+        return Response(content="Invalid payload", status_code=400)
+    except stripe.error.SignatureVerificationError as e:
+        print(f"Invalid signature: {e}")
+        return Response(content="Invalid signature", status_code=400)
+
+    # Handle the checkout.session.completed event
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        
+        user_id = session.get('metadata', {}).get('user_id')
+        customer_id = session.get('customer')
+        subscription_id = session.get('subscription')
+        
+        if user_id:
+            try:
+                # Upsert subscription
+                supabase.table("subscriptions").upsert({
+                    "user_id": user_id,
+                    "stripe_customer_id": customer_id,
+                    "stripe_subscription_id": subscription_id,
+                    "plan": "pro",
+                    "status": "active"
+                }).execute()
+                print(f"Successfully upgraded user {user_id} to pro.")
+            except Exception as e:
+                print(f"Error updating subscription in DB: {e}")
+                
+    return Response(content="success")
+
+@app.get("/api/billing/status")
+async def get_billing_status(current_user: Dict = Depends(get_current_user)):
+    try:
+        # Get plan
+        sub_result = supabase.table("subscriptions").select("plan").eq("user_id", current_user["id"]).execute()
+        plan = "free"
+        if sub_result.data:
+            plan = sub_result.data[0].get("plan", "free")
+            
+        # Get usage
+        current_month = datetime.utcnow().strftime('%Y-%m')
+        usage_result = supabase.table("usage").select("generation_count").eq("user_id", current_user["id"]).eq("month", current_month).execute()
+        
+        generation_count = 0
+        if usage_result.data:
+            generation_count = usage_result.data[0].get("generation_count", 0)
+            
+        return {
+            "plan": plan,
+            "generation_count": generation_count,
+            "limit": 5 if plan == "free" else -1
+        }
+    except Exception as e:
+        print(f"Error fetching billing status: {e}")
+        # Default to free tier on error to be safe
+        return {
+            "plan": "free",
+            "generation_count": 0,
+            "limit": 5
+        }
 
 @app.post("/api/generate-diagram")
 async def generate_diagram(request: GenerateRequest, current_user: Dict = Depends(get_current_user)):

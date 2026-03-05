@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { generateCode } from '../services/api';
 import ThemeToggle from '../components/ThemeToggle';
@@ -8,9 +8,10 @@ import GlassCard from '../components/GlassCard';
 import ProviderSelector from '../components/ProviderSelector';
 import DynamicFileRenderer from '../components/DynamicFileRenderer';
 import EnhancedArchitectureDiagram from '../components/EnhancedArchitectureDiagram';
-import MultiCloudTabs from '../components/MultiCloudTabs';
-import FileExplanations from '../components/FileExplanations';
 import InvalidRequestCard from '../components/InvalidRequestCard';
+import HistorySidebar from '../components/HistorySidebar';
+import UpgradeModal from '../components/UpgradeModal';
+import { getGenerationById, downloadGenerationZip, getBillingStatus } from '../services/api';
 
 // Icons from Lucide
 import {
@@ -34,7 +35,8 @@ import {
   FileText,
   Eye,
   TreePine,
-  FolderTree
+  Download,
+  FolderTree, // Added FolderTree import
 } from 'lucide-react';
 
 const EnhancedDashboard = () => {
@@ -42,8 +44,43 @@ const EnhancedDashboard = () => {
   const [provider, setProvider] = useState('aws');
   const [result, setResult] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [includeDiagram, setIncludeDiagram] = useState(true);
+  const [billingStatus, setBillingStatus] = useState({ plan: 'free', generation_count: 0, limit: 5 });
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const { user, logout } = useContext(AuthContext);
+
+  useEffect(() => {
+    const fetchBillingStatus = async () => {
+      try {
+        const res = await getBillingStatus();
+        setBillingStatus(res.data);
+      } catch (err) {
+        console.error('Failed to fetch billing status:', err);
+      }
+    };
+    if (user) {
+      fetchBillingStatus();
+    }
+  }, [user]);
+
+  const handleSelectHistory = async (id) => {
+    setIsLoadingHistory(true);
+    setResult(null);
+    try {
+      const res = await getGenerationById(id);
+      setResult(res.data);
+      // Optional: Update description and provider to match the history item
+      if (res.data.description) setDescription(res.data.description);
+      if (res.data.provider) setProvider(res.data.provider);
+    } catch (err) {
+      console.error('Error loading history item:', err);
+      // Optional: show a toast error here
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!description.trim()) return;
@@ -55,18 +92,44 @@ const EnhancedDashboard = () => {
       const res = await generateCode(description, provider, token, includeDiagram);
       console.log('API Response:', res.data); // Debug log
       setResult(res.data);
+
+      // Update billing count after successful generation
+      if (billingStatus.plan === 'free') {
+        setBillingStatus(prev => ({
+          ...prev,
+          generation_count: prev.generation_count + 1
+        }));
+      }
     } catch (err) {
       console.error('Generation error:', err); // Debug log
-      setResult({
-        is_valid_request: false,
-        explanation: err.response?.data?.detail || 'An unexpected error occurred. Please try again.',
-        files: [],
-        resources: [],
-        estimated_cost: 'Unknown',
-        file_hierarchy: ''
-      });
+      if (err.response?.status === 429) {
+        setIsUpgradeModalOpen(true);
+        setResult(null);
+      } else {
+        setResult({
+          is_valid_request: false,
+          explanation: err.response?.data?.detail || 'An unexpected error occurred. Please try again.',
+          files: [],
+          resources: [],
+          estimated_cost: 'Unknown',
+          file_hierarchy: ''
+        });
+      }
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadZip = async () => {
+    if (!result?.id) return;
+    setIsDownloading(true);
+    try {
+      await downloadGenerationZip(result.id);
+    } catch (err) {
+      console.error('Download error:', err);
+      // Optional: Add toast notification for error
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -150,7 +213,7 @@ const EnhancedDashboard = () => {
             {result.file_hierarchy}
           </pre>
         </div>
-        
+
         {/* File Statistics */}
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
           {result.files && (
@@ -210,6 +273,21 @@ const EnhancedDashboard = () => {
               </div>
             </div>
             <div className="flex items-center space-x-2">
+              {result.id && (
+                <button
+                  onClick={handleDownloadZip}
+                  disabled={isDownloading}
+                  className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-lg text-sm font-medium border border-blue-500/30 flex items-center space-x-1 transition-colors disabled:opacity-50"
+                  title="Download files as ZIP"
+                >
+                  {isDownloading ? (
+                    <Loader className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  <span className="hidden sm:inline">Download ZIP</span>
+                </button>
+              )}
               {result.cached_response && (
                 <span className="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-lg text-sm font-medium border border-yellow-500/30 flex items-center space-x-1">
                   <Clipboard className="w-3 h-3" />
@@ -280,7 +358,7 @@ const EnhancedDashboard = () => {
         </GlassCard>
 
         {/* Enhanced Architecture Diagram */}
-        <EnhancedArchitectureDiagram 
+        <EnhancedArchitectureDiagram
           architectureDiagram={result.architecture_diagram}
           resources={result.resources}
           description={description}
@@ -303,8 +381,8 @@ const EnhancedDashboard = () => {
                 <p className="text-sm text-slate-400">Production-ready infrastructure code</p>
               </div>
             </div>
-            <DynamicFileRenderer 
-              files={result.files} 
+            <DynamicFileRenderer
+              files={result.files}
               onCopy={handleCopyToClipboard}
             />
           </GlassCard>
@@ -317,9 +395,8 @@ const EnhancedDashboard = () => {
               <Layers className="w-5 h-5 text-indigo-400" />
               <h4 className="font-semibold text-slate-200">Resource Breakdown</h4>
             </div>
-            
+
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Group resources by type */}
               {(() => {
                 const groupedResources = result.resources.reduce((acc, resource) => {
                   const type = resource.split('_')[0] || 'other';
@@ -366,12 +443,12 @@ const EnhancedDashboard = () => {
   dark:from-slate-900 dark:via-purple-900 dark:to-slate-900 
   font-sans text-black dark:text-white transition-colors duration-500 ease-in-out">
 
-  {/* Animated background elements */}
-  <div className="absolute inset-0 overflow-hidden">
-    <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-    <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
-    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-emerald-500 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse delay-2000"></div>
-  </div>
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-emerald-500 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse delay-2000"></div>
+      </div>
 
 
       {/* Header */}
@@ -388,9 +465,18 @@ const EnhancedDashboard = () => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-4">
+          {billingStatus.plan === 'free' && (
+            <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50">
+              <Zap className="w-4 h-4 text-emerald-400" />
+              <span className="text-sm font-medium text-slate-300">
+                {billingStatus.generation_count} / {billingStatus.limit}
+              </span>
+              <span className="text-xs text-slate-500 ml-1">used</span>
+            </div>
+          )}
           <ThemeToggle />
-           
+
           <button
             onClick={logout}
             className="group relative px-4 py-2 bg-slate-800/50 backdrop-blur-md text-white border border-slate-700/50 rounded-xl shadow-lg hover:bg-slate-700/50 transition-all duration-300 hover:scale-105"
@@ -404,25 +490,32 @@ const EnhancedDashboard = () => {
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 max-w-6xl mx-auto px-6 pb-20">
-        {/* Enhanced Input Section */}
-        <GlassCard className="mb-8">
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="w-16 h-16 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center shadow-lg">
-               <Server className="w-8 h-8 text-white"/>
-            </div>
-            <div>
-              <h2 className="text-3xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                Welcome back, {user?.name || 'Developer'}
-              </h2>
-              <p className="text-slate-400 text-lg">
-                Describe your infrastructure needs and watch AI create production-ready code
-              </p>
-            </div>
-          </div>
+      <main className="relative z-10 max-w-7xl mx-auto px-6 pb-20 grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* Sidebar */}
+        <div className="lg:col-span-1 hidden lg:block">
+          <HistorySidebar onSelect={handleSelectHistory} />
+        </div>
 
-          <div className="space-y-6">
-             <div className="relative">
+        {/* Main Workspace */}
+        <div className="lg:col-span-3 space-y-8">
+          {/* Enhanced Input Section */}
+          <GlassCard className="mb-8">
+            <div className="flex items-center space-x-4 mb-6">
+              <div className="w-16 h-16 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center shadow-lg">
+                <Server className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-3xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+                  Welcome back, {user?.name || 'Developer'}
+                </h2>
+                <p className="text-slate-400 text-lg">
+                  Describe your infrastructure needs and watch AI create production-ready code
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="relative">
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -438,12 +531,12 @@ const EnhancedDashboard = () => {
                     <div className={`w-2 h-2 rounded-full ${description.length > 900 ? 'bg-red-400' : description.length > 700 ? 'bg-yellow-400' : 'bg-green-400'}`}></div>
                   )}
                 </div>
-             </div>
-             
-             <div className="flex flex-wrap items-center justify-between gap-4">
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center space-x-4">
                   <ProviderSelector selectedProvider={provider} onProviderChange={setProvider} />
-                  
+
                   {/* Diagram Toggle */}
                   <div className="flex items-center space-x-2">
                     <input
@@ -459,7 +552,7 @@ const EnhancedDashboard = () => {
                     </label>
                   </div>
                 </div>
-                
+
                 <button
                   onClick={handleGenerate}
                   disabled={!description.trim() || isGenerating}
@@ -480,37 +573,53 @@ const EnhancedDashboard = () => {
                     )}
                   </span>
                 </button>
-             </div>
-          </div>
-        </GlassCard>
+              </div>
+            </div>
+          </GlassCard>
 
-        {/* Generation Progress */}
-        {renderGenerationProgress()}
+          {/* Generation Progress */}
+          {renderGenerationProgress()}
 
-        {/* Enhanced Results */}
-        {renderEnhancedResults()}
+          {/* Enhanced Results */}
+          {isLoadingHistory ? (
+            <GlassCard>
+              <div className="flex flex-col items-center justify-center p-8 space-y-4">
+                <Loader className="w-12 h-12 text-blue-400 animate-spin" />
+                <p className="text-slate-300">Loading infrastructure details...</p>
+              </div>
+            </GlassCard>
+          ) : (
+            renderEnhancedResults()
+          )}
+        </div>
       </main>
 
-       {/* Footer */}
-        <footer className="relative z-10 mt-16 border-t border-slate-800/50 bg-slate-900/30 backdrop-blur-md">
-            <div className="max-w-6xl mx-auto px-6 py-8">
-                <div className="flex flex-col sm:flex-row items-center justify-between">
-                    <div className="text-center sm:text-left text-sm text-slate-400">
-                        <span>© {new Date().getFullYear()} AI Terraform Coder.</span>
-                    </div>
-                    <div className="flex items-center space-x-4 mt-4 sm:mt-0">
-                        <div className="flex items-center space-x-2 text-xs text-slate-500">
-                            <Zap className="w-3 h-3" />
-                            <span>Neural Processing</span>
-                        </div>
-                        <div className="flex items-center space-x-2 text-xs text-slate-500">
-                            <Eye className="w-3 h-3" />
-                            <span>Mermaid Charts</span>
-                        </div>
-                    </div>
-                </div>
+      {/* Footer */}
+      <footer className="relative z-10 mt-16 border-t border-slate-800/50 bg-slate-900/30 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-6 py-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between">
+            <div className="text-center sm:text-left text-sm text-slate-400">
+              <span>© {new Date().getFullYear()} AI Terraform Coder.</span>
             </div>
-        </footer>
+            <div className="flex items-center space-x-4 mt-4 sm:mt-0">
+              <div className="flex items-center space-x-2 text-xs text-slate-500">
+                <Zap className="w-3 h-3" />
+                <span>Neural Processing</span>
+              </div>
+              <div className="flex items-center space-x-2 text-xs text-slate-500">
+                <Eye className="w-3 h-3" />
+                <span>Mermaid Charts</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+      />
     </div>
   );
 };

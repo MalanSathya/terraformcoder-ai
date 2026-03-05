@@ -79,7 +79,7 @@ export const authAPI = {
 // Enhanced code generation service
 export const generateCode = (description, provider = 'aws', token = null, includeDiagram = true) => {
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
-  
+
   return api.post('/api/generate', {
     description,
     provider,
@@ -95,6 +95,59 @@ export const getGenerationHistory = async (limit = 10) => {
     return response;
   } catch (error) {
     console.error('Error fetching history:', error);
+    throw error;
+  }
+};
+
+// Get a specific generation by ID
+export const getGenerationById = async (id) => {
+  try {
+    const response = await api.get(`/api/history/${id}`);
+    return response;
+  } catch (error) {
+    console.error(`Error fetching generation ${id}:`, error);
+    throw error;
+  }
+};
+
+// Download generation code as ZIP
+export const downloadGenerationZip = async (generationId) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_BASE_URL}/api/download/${generationId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to download ZIP file');
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+
+  // Extract filename from Content-Disposition header if possible, else generate one
+  const shortId = generationId.substring(0, 8);
+  link.setAttribute('download', `terraform-${shortId}.zip`);
+
+  document.body.appendChild(link);
+  link.click();
+
+  // Clean up
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+// Get billing status
+export const getBillingStatus = async () => {
+  try {
+    const response = await api.get('/api/billing/status');
+    return response;
+  } catch (error) {
+    console.error('Error fetching billing status:', error);
     throw error;
   }
 };
@@ -197,7 +250,7 @@ export const utils = {
       'deploy', 'provision', 'create', 'setup', 'configure'
     ];
 
-    const hasInfraKeywords = infrastructureKeywords.some(keyword => 
+    const hasInfraKeywords = infrastructureKeywords.some(keyword =>
       description.toLowerCase().includes(keyword)
     );
 
@@ -218,7 +271,7 @@ export const utils = {
   detectCloudProvider: (description) => {
     const providers = [];
     const descriptionLower = description.toLowerCase();
-    
+
     if (/aws|amazon|ec2|s3|rds|lambda|cloudformation/.test(descriptionLower)) {
       providers.push('aws');
     }
@@ -228,7 +281,7 @@ export const utils = {
     if (/gcp|google|gce|cloud storage|bigquery|deployment manager/.test(descriptionLower)) {
       providers.push('gcp');
     }
-    
+
     return providers.length > 0 ? providers : ['aws']; // Default to AWS
   },
 
