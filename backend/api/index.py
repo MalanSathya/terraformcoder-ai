@@ -846,6 +846,43 @@ async def save_generation(user_id: str, request: GenerateRequest, response: Gene
         print(f"Database error saving generation: {e}")
         return None
 
+async def get_user_by_email(email: str) -> Optional[Dict]:
+    """Fetch a user by email from the public users table"""
+    try:
+        if not supabase: return None
+        result = supabase.table("users").select("*").eq("email", email).execute()
+        if result.data: return result.data[0]
+        return None
+    except Exception:
+        return None
+
+async def get_user_by_id(user_id: str) -> Optional[Dict]:
+    """Fetch a user by ID from the public users table"""
+    try:
+        if not supabase: return None
+        result = supabase.table("users").select("*").eq("id", user_id).execute()
+        if result.data: return result.data[0]
+        return None
+    except Exception:
+        return None
+
+async def create_user(email: str, name: str, password: str):
+    """Register a new user using Supabase Auth"""
+    try:
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {
+                "data": {
+                    "name": name
+                }
+            }
+        })
+        return response
+    except Exception as e:
+        print(f"Registration error: {e}")
+        raise e
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
