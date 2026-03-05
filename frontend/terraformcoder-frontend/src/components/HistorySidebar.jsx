@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Server, DollarSign, Database, Loader, Activity } from 'lucide-react';
+import { Clock, Server, DollarSign, Database, Activity } from 'lucide-react';
 import { getGenerationHistory } from '../services/api';
 
 const HistorySidebar = ({ onSelect }) => {
