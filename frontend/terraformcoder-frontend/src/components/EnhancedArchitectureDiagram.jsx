@@ -6,7 +6,6 @@ import {
   Eye,
   CloudIcon,
   NetworkIcon,
-  ArrowRight,
   Download,
   RefreshCw
 } from 'lucide-react';
@@ -78,32 +77,7 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
     }
   };
 
-  const getConnectionColor = (type) => {
-    switch (type) {
-      case 'network': return 'text-blue-400';
-      case 'data': return 'text-green-400';
-      case 'traffic': return 'text-orange-400';
-      default: return 'text-slate-400';
-    }
-  };
 
-  function getComponentIcon(component) {
-    const componentLower = component.toLowerCase();
-    if (componentLower.includes('compute') || componentLower.includes('instance')) {
-      return '🖥️';
-    } else if (componentLower.includes('network') || componentLower.includes('vpc')) {
-      return '🌐';
-    } else if (componentLower.includes('database')) {
-      return '🗄️';
-    } else if (componentLower.includes('load balancer')) {
-      return '⚖️';
-    } else if (componentLower.includes('storage')) {
-      return '💾';
-    } else if (componentLower.includes('security')) {
-      return '🛡️';
-    }
-    return '🔧';
-  }
 
   if (!architectureDiagram) {
     return null;
