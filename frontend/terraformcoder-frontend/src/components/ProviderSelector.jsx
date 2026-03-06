@@ -1,6 +1,4 @@
 import React from 'react';
-import { Cloud } from 'lucide-react';
-
 const providers = [
   { key: 'aws', name: 'AWS', emoji: '☁️' },
   { key: 'azure', name: 'Azure', emoji: '🔷' },

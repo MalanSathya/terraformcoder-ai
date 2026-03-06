@@ -13,14 +13,11 @@ import UpgradeModal from '../components/UpgradeModal';
 import { getGenerationById, downloadGenerationZip, getBillingStatus } from '../services/api';
 
 import {
-  LogOut,
   Bolt,
   Loader,
   CheckCircle2,
   Copy,
   BrainCircuit,
-  DollarSign,
-  Layers,
   Zap,
   Sparkles,
   FileText,
