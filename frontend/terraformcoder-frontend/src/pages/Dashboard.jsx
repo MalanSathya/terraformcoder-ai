@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { generateCode } from '../services/api';
 
@@ -40,6 +40,7 @@ const EnhancedDashboard = () => {
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { user, logout } = useContext(AuthContext);
+  const scrollRef = useRef(null);
 
 
   useEffect(() => {
@@ -54,6 +55,14 @@ const EnhancedDashboard = () => {
     if (user) fetchBillingStatus();
   }, [user]);
 
+  // Auto-scroll to bottom when new results arrive
+  useEffect(() => {
+    if ((result || isGenerating) && scrollRef.current) {
+      setTimeout(() => {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }, 100);
+    }
+  }, [result, isGenerating]);
 
 
   const handleSelectHistory = async (id) => {
@@ -184,23 +193,14 @@ const EnhancedDashboard = () => {
       <div className="space-y-4">
         {/* Success Header — compact */}
         <GlassCard>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                <CheckCircle2 className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">Infrastructure Generated</h3>
-                <p className="text-xs text-slate-400">Production-ready code with AI analysis</p>
-              </div>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <CheckCircle2 className="w-4 h-4 text-white" />
             </div>
-            {result.id && (
-              <button onClick={handleDownloadZip} disabled={isDownloading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg text-xs font-medium border border-emerald-500/25 transition-all disabled:opacity-50">
-                {isDownloading ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">Download ZIP</span>
-              </button>
-            )}
+            <div>
+              <h3 className="text-base font-bold text-white">Infrastructure Generated</h3>
+              <p className="text-xs text-slate-400">Production-ready code with AI analysis</p>
+            </div>
           </div>
 
           {/* Compact Stats */}
@@ -241,17 +241,26 @@ const EnhancedDashboard = () => {
         {/* File Hierarchy */}
         {renderFileHierarchy()}
 
-        {/* Generated Files */}
+        {/* Generated Files + Download ZIP */}
         {result.files && result.files.length > 0 && (
           <GlassCard>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-red-500 rounded-lg flex items-center justify-center shadow-lg">
-                <FileText className="w-4 h-4 text-white" />
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-red-500 rounded-lg flex items-center justify-center shadow-lg">
+                  <FileText className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Infrastructure Code</h3>
+                  <p className="text-xs text-slate-400">{result.files.length} files generated</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-white">Infrastructure Code</h3>
-                <p className="text-xs text-slate-400">{result.files.length} files generated</p>
-              </div>
+              {result.id && (
+                <button onClick={handleDownloadZip} disabled={isDownloading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg text-xs font-medium border border-emerald-500/25 transition-all disabled:opacity-50">
+                  {isDownloading ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  <span>Download ZIP</span>
+                </button>
+              )}
             </div>
             <DynamicFileRenderer files={result.files} onCopy={handleCopyToClipboard} />
           </GlassCard>
@@ -366,10 +375,10 @@ const EnhancedDashboard = () => {
             </div>
           </div>
         ) : (
-          /* ── RESULTS STATE: Scrollable results + input at bottom ── */
+          /* ── RESULTS STATE: Scrollable results + sticky bottom input ── */
           <>
             {/* Scrollable results area */}
-            <div className="flex-1 overflow-y-auto px-6 py-6">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
               <div className="max-w-4xl mx-auto space-y-4">
                 {isLoadingHistory && (
                   <GlassCard>
@@ -384,8 +393,8 @@ const EnhancedDashboard = () => {
               </div>
             </div>
 
-            {/* Input bar fixed at bottom */}
-            <div className="flex-shrink-0 px-6 py-4 border-t border-white/[0.04]">
+            {/* Sticky bottom input bar — z-index layering ensures it stays on top */}
+            <div className="sticky bottom-0 z-30 px-6 py-4 border-t border-white/[0.06] bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent backdrop-blur-md">
               {renderInputBar()}
             </div>
           </>

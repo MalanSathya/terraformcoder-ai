@@ -202,25 +202,16 @@ async def generate_file_explanation(filename: str, content: str, file_type: str,
     """Generate detailed explanation for each file using transformer-based summarization"""
     
     explanation_prompt = f"""
-You are an expert DevOps engineer. Analyze this {file_type} file and provide a thorough, project-specific explanation.
+You are an expert DevOps engineer. Provide a concise, markdown-formatted explanation for this Terraform file.
 
 File: {filename}
 Type: {file_type}
 Category: {category}
 
 Content:
-{content[:2000]}
+{content[:1500]}
 
-Provide a detailed, project-specific explanation covering:
-1. Purpose and role in the infrastructure — explain exactly what this file provisions and why it exists in this project
-2. Key resources and their configurations — reference specific resource names, variable names, and configuration values from the code
-3. Dependencies and relationships with other files — how this file connects to other modules, variables, and outputs
-4. Security considerations — explain any security groups, IAM roles, encryption settings, or access controls defined here
-5. Cost optimization aspects — identify any cost-related decisions like instance sizing, storage tiers, or reserved capacity
-6. Best practices applied — mention any Terraform best practices like tagging, naming conventions, or modular design used here
-7. How this file integrates with the overall deployment pipeline
-
-Provide a thorough, project-specific explanation (4-5 paragraphs). Reference specific resource names, variable names, and configuration values from the code. Explain WHY each design decision was made, not just WHAT the code does.
+Write exactly 3-4 sentences covering: (1) what this file provisions and why, (2) key resources or variables it defines, (3) how it connects to other files in the project. Use **bold** for resource names and `code` formatting for variable/file references. Keep it concise and project-specific.
 """
 
     try:
@@ -230,7 +221,7 @@ Provide a thorough, project-specific explanation (4-5 paragraphs). Reference spe
                 model=MISTRAL_MODEL,
                 messages=messages,
                 temperature=0.3,
-                max_tokens=800
+                max_tokens=250
             )
         else:
             messages = [{"role": "user", "content": explanation_prompt}]
@@ -238,7 +229,7 @@ Provide a thorough, project-specific explanation (4-5 paragraphs). Reference spe
                 model=MISTRAL_MODEL,
                 messages=messages,
                 temperature=0.3,
-                max_tokens=800
+                max_tokens=250
             )
         
         return response.choices[0].message.content.strip()
