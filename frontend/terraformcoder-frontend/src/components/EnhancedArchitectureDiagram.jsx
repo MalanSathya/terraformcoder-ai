@@ -7,10 +7,7 @@ import {
   CloudIcon,
   NetworkIcon,
   ArrowRight,
-  ExternalLink,
-  Copy,
   Download,
-  Maximize2,
   RefreshCw
 } from 'lucide-react';
 import GlassCard from './GlassCard';
@@ -57,29 +54,11 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
           <div class="flex items-center justify-center min-h-[200px] text-red-400">
             <div class="text-center">
               <p class="font-medium">Error rendering diagram</p>
-              <p class="text-sm text-slate-500 mt-1">Please try regenerating or use the external link</p>
+              <p class="text-sm text-slate-500 mt-1">Please try regenerating</p>
             </div>
           </div>
         `;
       }
-    }
-  };
-
-  const handleCopyMermaidCode = () => {
-    if (architectureDiagram?.diagram_mermaid_syntax) {
-      navigator.clipboard.writeText(architectureDiagram.diagram_mermaid_syntax);
-      // TODO: Add toast notification
-    }
-  };
-
-  const handleOpenInMermaidChart = () => {
-    if (architectureDiagram?.mermaid_chart_url) {
-      window.open(architectureDiagram.mermaid_chart_url, '_blank');
-    } else {
-      // Fallback: Create a direct mermaid.live link
-      const encodedDiagram = encodeURIComponent(architectureDiagram?.diagram_mermaid_syntax || '');
-      const mermaidLiveUrl = `https://mermaid.live/edit#pako:eNpVjstqw0AMRX_F6HWS_AFeFBq3dBG6KYRC2YxHY1tjzwhpJjFh_r2yncYk7Ubc6z7eR-i8EQVaEiKGTgMBJR7_TK3X2lhf0gAyAX2t5NbIb_k_RdOdKEsyGO2t1fA_${encodedDiagram}`;
-      window.open(mermaidLiveUrl, '_blank');
     }
   };
 
@@ -99,25 +78,6 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
     }
   };
 
-  // // Component icons mapping
-  // const getComponentIcon = (component) => {
-  //   const componentLower = component.toLowerCase();
-  //   if (componentLower.includes('compute') || componentLower.includes('instance')) {
-  //     return '🖥️';
-  //   } else if (componentLower.includes('network') || componentLower.includes('vpc')) {
-  //     return '🌐';
-  //   } else if (componentLower.includes('database')) {
-  //     return '🗄️';
-  //   } else if (componentLower.includes('load balancer')) {
-  //     return '⚖️';
-  //   } else if (componentLower.includes('storage')) {
-  //     return '💾';
-  //   } else if (componentLower.includes('security')) {
-  //     return '🛡️';
-  //   }
-  //   return '🔧';
-  // };
-
   const getConnectionColor = (type) => {
     switch (type) {
       case 'network': return 'text-blue-400';
@@ -126,6 +86,24 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
       default: return 'text-slate-400';
     }
   };
+
+  function getComponentIcon(component) {
+    const componentLower = component.toLowerCase();
+    if (componentLower.includes('compute') || componentLower.includes('instance')) {
+      return '🖥️';
+    } else if (componentLower.includes('network') || componentLower.includes('vpc')) {
+      return '🌐';
+    } else if (componentLower.includes('database')) {
+      return '🗄️';
+    } else if (componentLower.includes('load balancer')) {
+      return '⚖️';
+    } else if (componentLower.includes('storage')) {
+      return '💾';
+    } else if (componentLower.includes('security')) {
+      return '🛡️';
+    }
+    return '🔧';
+  }
 
   if (!architectureDiagram) {
     return null;
@@ -149,32 +127,6 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
           </div>
         </div>
         <div className="flex items-center space-x-2">
-          {/* Action buttons */}
-          {isExpanded && (
-            <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={handleCopyMermaidCode}
-                className="p-2 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-colors duration-200"
-                title="Copy Mermaid Code"
-              >
-                <Copy className="w-4 h-4 text-slate-300" />
-              </button>
-              <button
-                onClick={handleOpenInMermaidChart}
-                className="p-2 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-colors duration-200"
-                title="Open in Mermaid Chart"
-              >
-                <ExternalLink className="w-4 h-4 text-slate-300" />
-              </button>
-              <button
-                onClick={handleDownloadDiagram}
-                className="p-2 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-colors duration-200"
-                title="Download SVG"
-              >
-                <Download className="w-4 h-4 text-slate-300" />
-              </button>
-            </div>
-          )}
           {isExpanded ?
             <ChevronUpIcon className="w-5 h-5 text-slate-400" /> :
             <ChevronDownIcon className="w-5 h-5 text-slate-400" />
@@ -196,16 +148,7 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
               {/* Mermaid Chart Integration */}
               {architectureDiagram?.mermaid_chart_url && (
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-500">Powered by</span>
-                  <a
-                    href={architectureDiagram.mermaid_chart_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center space-x-1 px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-medium border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors duration-200"
-                  >
-                    <span>MermaidChart.com</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                  <span className="text-xs text-slate-500">Powered by MermaidChart.com</span>
                 </div>
               )}
             </div>
@@ -230,11 +173,11 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
                     <RefreshCw className="w-4 h-4 text-slate-300" />
                   </button>
                   <button
-                    onClick={handleOpenInMermaidChart}
-                    className="p-2 bg-emerald-600/80 backdrop-blur-sm hover:bg-emerald-500/80 rounded-lg transition-colors duration-200 border border-emerald-500/50"
-                    title="Open in Full Editor"
+                    onClick={handleDownloadDiagram}
+                    className="p-2 bg-blue-600/80 backdrop-blur-sm hover:bg-blue-500/80 rounded-lg transition-colors duration-200 border border-blue-500/50"
+                    title="Download SVG"
                   >
-                    <Maximize2 className="w-4 h-4 text-white" />
+                    <Download className="w-4 h-4 text-white" />
                   </button>
                 </div>
 
@@ -244,12 +187,7 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
                     <div className="text-center">
                       <CloudIcon className="w-12 h-12 text-slate-500 mx-auto mb-3" />
                       <p className="text-slate-400 font-medium">Diagram Render Error</p>
-                      <button
-                        onClick={handleOpenInMermaidChart}
-                        className="mt-3 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg transition-colors duration-200"
-                      >
-                        View in External Editor
-                      </button>
+                      <p className="mt-2 text-sm text-slate-500">Try regenerating the infrastructure code</p>
                     </div>
                   </div>
                 )}
@@ -278,47 +216,64 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
             </div>
           )}
 
-          {/* Components and Connections */}
+          {/* Components, Resources, and Data Flow — 3-column row */}
           {architectureDiagram?.components && architectureDiagram.components.length > 0 && (
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Components */}
-              <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-                <div className="flex items-center space-x-2 mb-3">
-                  <div className="w-4 h-4 bg-emerald-400 rounded-full"></div>
-                  <h4 className="font-semibold text-slate-200">Components</h4>
-                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-xs">
+              <div className="p-3 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <div className="w-3 h-3 bg-emerald-400 rounded-full"></div>
+                  <h4 className="font-semibold text-slate-200 text-xs">Components</h4>
+                  <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-[10px]">
                     {architectureDiagram.components.length}
                   </span>
                 </div>
-                <div className="space-y-2 max-h-60 overflow-y-auto">
+                <div className="space-y-1 max-h-48 overflow-y-auto">
                   {architectureDiagram.components.map((component, index) => (
-                    <div key={index} className="flex items-center space-x-3 p-2 bg-slate-900/50 rounded-lg hover:bg-slate-900/70 transition-colors duration-200">
-                      <span className="text-xl">{getComponentIcon(component)}</span>
-                      <span className="text-slate-300 text-sm flex-1">{component}</span>
+                    <div key={index} className="flex items-center gap-2 p-1.5 bg-slate-900/50 rounded-lg text-xs">
+                      <span>{getComponentIcon(component)}</span>
+                      <span className="text-slate-300 truncate">{component}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Connections */}
+              {/* Resources */}
+              {resources && resources.length > 0 && (
+                <div className="p-3 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <div className="w-3 h-3 bg-indigo-400 rounded-full"></div>
+                    <h4 className="font-semibold text-slate-200 text-xs">Resources</h4>
+                    <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[10px]">
+                      {resources.length}
+                    </span>
+                  </div>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {resources.map((resource, idx) => (
+                      <div key={idx} className="text-xs text-slate-400 truncate p-1.5 bg-slate-900/50 rounded-lg">
+                        {resource}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Data Flow */}
               {architectureDiagram?.connections && architectureDiagram.connections.length > 0 && (
-                <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-                  <div className="flex items-center space-x-2 mb-3">
-                    <ArrowRight className="w-4 h-4 text-blue-400" />
-                    <h4 className="font-semibold text-slate-200">Data Flow</h4>
-                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded text-xs">
+                <div className="p-3 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <ArrowRight className="w-3 h-3 text-blue-400" />
+                    <h4 className="font-semibold text-slate-200 text-xs">Data Flow</h4>
+                    <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px]">
                       {architectureDiagram.connections.length}
                     </span>
                   </div>
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
                     {architectureDiagram.connections.map((connection, index) => (
-                      <div key={index} className="flex items-center space-x-2 p-2 bg-slate-900/50 rounded-lg text-sm hover:bg-slate-900/70 transition-colors duration-200">
-                        <span className="text-slate-300 flex-1 truncate">{connection.from}</span>
-                        <ArrowRight className={`w-3 h-3 ${getConnectionColor(connection.type)} flex-shrink-0`} />
-                        <span className="text-slate-300 flex-1 truncate">{connection.to}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs flex-shrink-0 ${getConnectionColor(connection.type)} bg-current bg-opacity-20`}>
-                          {connection.type}
-                        </span>
+                      <div key={index} className="flex items-center gap-1 p-1.5 bg-slate-900/50 rounded-lg text-xs">
+                        <span className="text-slate-300 truncate flex-1">{connection.from}</span>
+                        <ArrowRight className={`w-2.5 h-2.5 ${getConnectionColor(connection.type)} flex-shrink-0`} />
+                        <span className="text-slate-300 truncate flex-1">{connection.to}</span>
                       </div>
                     ))}
                   </div>
@@ -326,113 +281,10 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
               )}
             </div>
           )}
-
-          {/* Mermaid Code Section
-          {architectureDiagram?.diagram_mermaid_syntax && (
-            <div className="mt-6 p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 bg-purple-400 rounded-full"></div>
-                  <h4 className="font-semibold text-slate-200">Mermaid Code</h4>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={handleCopyMermaidCode}
-                    className="flex items-center space-x-1 px-3 py-1 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg text-xs text-slate-300 transition-colors duration-200"
-                  >
-                    <Copy className="w-3 h-3" />
-                    <span>Copy</span>
-                  </button>
-                  <button
-                    onClick={handleOpenInMermaidChart}
-                    className="flex items-center space-x-1 px-3 py-1 bg-emerald-600/50 hover:bg-emerald-500/50 rounded-lg text-xs text-white transition-colors duration-200"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    <span>Edit Online</span>
-                  </button>
-                </div>
-              </div>
-              <pre className="text-slate-300 font-mono text-xs leading-relaxed bg-slate-900/50 p-3 rounded-lg overflow-x-auto border border-slate-700/30">
-                {architectureDiagram.diagram_mermaid_syntax}
-              </pre>
-            </div>
-          )} */}
-
-          {/* Resource Summary */}
-          {resources && resources.length > 0 && (
-            <div className="mt-6 p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-              <div className="flex items-center space-x-2 mb-3">
-                <div className="w-4 h-4 bg-purple-400 rounded-full"></div>
-                <h4 className="font-semibold text-slate-200">Infrastructure Resources</h4>
-                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded text-xs">
-                  {resources.length} total
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {resources.slice(0, 12).map((resource, index) => (
-                  <span key={index} className="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-xs font-medium border border-purple-500/30 hover:bg-purple-500/30 transition-colors duration-200">
-                    {resource}
-                  </span>
-                ))}
-                {resources.length > 12 && (
-                  <span className="px-3 py-1 bg-slate-500/20 text-slate-300 rounded-full text-xs font-medium border border-slate-500/30">
-                    +{resources.length - 12} more
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Quick Actions */}
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <div className="text-xs text-slate-500 flex items-center space-x-1">
-              <span>Quick Actions:</span>
-            </div>
-            <button
-              onClick={handleOpenInMermaidChart}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 text-emerald-300 rounded-lg text-xs font-medium border border-emerald-500/30 hover:from-emerald-500/30 hover:to-cyan-500/30 transition-all duration-200"
-            >
-              <ExternalLink className="w-3 h-3" />
-              <span>Edit in MermaidChart</span>
-            </button>
-            <button
-              onClick={handleDownloadDiagram}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-medium border border-blue-500/30 hover:bg-blue-500/30 transition-colors duration-200"
-            >
-              <Download className="w-3 h-3" />
-              <span>Download SVG</span>
-            </button>
-            <button
-              onClick={handleCopyMermaidCode}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-purple-500/20 text-purple-300 rounded-lg text-xs font-medium border border-purple-500/30 hover:bg-purple-500/30 transition-colors duration-200"
-            >
-              <Copy className="w-3 h-3" />
-              <span>Copy Code</span>
-            </button>
-          </div>
         </div>
       )}
     </GlassCard>
   );
-
-  // Helper function moved inside component to access state
-  function getComponentIcon(component) {
-    const componentLower = component.toLowerCase();
-    if (componentLower.includes('compute') || componentLower.includes('instance')) {
-      return '🖥️';
-    } else if (componentLower.includes('network') || componentLower.includes('vpc')) {
-      return '🌐';
-    } else if (componentLower.includes('database')) {
-      return '🗄️';
-    } else if (componentLower.includes('load balancer')) {
-      return '⚖️';
-    } else if (componentLower.includes('storage')) {
-      return '💾';
-    } else if (componentLower.includes('security')) {
-      return '🛡️';
-    }
-    return '🔧';
-  }
 };
 
 export default EnhancedArchitectureDiagram;

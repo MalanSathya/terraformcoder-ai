@@ -202,23 +202,25 @@ async def generate_file_explanation(filename: str, content: str, file_type: str,
     """Generate detailed explanation for each file using transformer-based summarization"""
     
     explanation_prompt = f"""
-You are an expert DevOps engineer. Analyze this {file_type} file and provide a comprehensive explanation.
+You are an expert DevOps engineer. Analyze this {file_type} file and provide a thorough, project-specific explanation.
 
 File: {filename}
 Type: {file_type}
 Category: {category}
 
 Content:
-{content[:1000]}...  # Truncate for token efficiency
+{content[:2000]}
 
-Provide a detailed explanation covering:
-1. Purpose and role in the infrastructure
-2. Key resources and their configurations
-3. Dependencies and relationships with other files
-4. Security considerations
-5. Cost optimization aspects
+Provide a detailed, project-specific explanation covering:
+1. Purpose and role in the infrastructure — explain exactly what this file provisions and why it exists in this project
+2. Key resources and their configurations — reference specific resource names, variable names, and configuration values from the code
+3. Dependencies and relationships with other files — how this file connects to other modules, variables, and outputs
+4. Security considerations — explain any security groups, IAM roles, encryption settings, or access controls defined here
+5. Cost optimization aspects — identify any cost-related decisions like instance sizing, storage tiers, or reserved capacity
+6. Best practices applied — mention any Terraform best practices like tagging, naming conventions, or modular design used here
+7. How this file integrates with the overall deployment pipeline
 
-Keep the explanation concise but comprehensive (2-3 paragraphs).
+Provide a thorough, project-specific explanation (4-5 paragraphs). Reference specific resource names, variable names, and configuration values from the code. Explain WHY each design decision was made, not just WHAT the code does.
 """
 
     try:
@@ -227,8 +229,8 @@ Keep the explanation concise but comprehensive (2-3 paragraphs).
             response = mistral_client.chat(
                 model=MISTRAL_MODEL,
                 messages=messages,
-                temperature=0.3,  # Lower temperature for consistency
-                max_tokens=300
+                temperature=0.3,
+                max_tokens=800
             )
         else:
             messages = [{"role": "user", "content": explanation_prompt}]
@@ -236,7 +238,7 @@ Keep the explanation concise but comprehensive (2-3 paragraphs).
                 model=MISTRAL_MODEL,
                 messages=messages,
                 temperature=0.3,
-                max_tokens=300
+                max_tokens=800
             )
         
         return response.choices[0].message.content.strip()
@@ -496,17 +498,12 @@ async def process_generated_files(parsed_files: List[Dict[str, str]]) -> List[Fi
         # Classify file
         file_type, category = classify_file_type(filename, content)
         
-        # Static explanation (bypasses LLM round-trip to drastically reduce Vercel latency)
-        if filename == "main.tf":
-            explanation = "Core infrastructure resources definition."
-        elif filename == "variables.tf":
-            explanation = "Input variables for the infrastructure."
-        elif filename == "outputs.tf":
-            explanation = "Outputs exported by the infrastructure."
-        elif filename == "providers.tf":
-            explanation = "Cloud provider configuration."
-        else:
-            explanation = f"Configuration file for {category} components."
+        # Generate AI-powered explanation for each file
+        try:
+            explanation = await generate_file_explanation(filename, content, file_type, category)
+        except Exception as e:
+            print(f"Explanation generation failed for {filename}: {e}")
+            explanation = f"Configuration file for {category} components. Contains essential infrastructure definitions and settings."
         
         processed_files.append(FileContent(
             filename=filename,
@@ -659,7 +656,7 @@ Optionally include additional files as needed:
 
 ```json
 {{
-  "explanation": "This deployment includes modular Terraform and Ansible automation for provisioning and configuration.",
+  "explanation": "A comprehensive summary of the generated infrastructure. List all generated files (e.g. main.tf, variables.tf, outputs.tf) and briefly describe what each file provisions. Include the cloud provider, key resources, estimated cost tier, and any security or best-practice considerations.",
   "resources": ["azurerm_virtual_network","azurerm_linux_virtual_machine", "ansible_role_install_nginx"],
   "estimated_cost": "Low"
 }}
@@ -833,13 +830,15 @@ async def save_generation(user_id: str, request: GenerateRequest, response: Gene
     """Save a generation to the database."""
     try:
         # Convert files list to JSON string for the 'code' column (matches DB schema)
-        files_as_json = json.dumps([file.dict() for file in response.files])
+        files_list = [file.dict() for file in response.files]
+        files_as_json = json.dumps(files_list)
         generation_data = {
             "user_id": user_id,
             "description": request.description,
             "provider": request.provider,
             "estimated_cost": response.estimated_cost or "Unknown",
             "code": files_as_json,
+            "files": files_list,
             "explanation": response.explanation,
             "resources": response.resources if response.resources else [],
             "file_hierarchy": response.file_hierarchy or "",
@@ -1102,7 +1101,7 @@ async def get_generation_by_id(generation_id: str, current_user: Dict = Depends(
 async def download_generation_zip(generation_id: str, current_user: Dict = Depends(get_current_user)):
     try:
         response = supabase.table("generations") \
-            .select("files, description, provider") \
+            .select("files, code, description, provider") \
             .eq("id", generation_id) \
             .eq("user_id", current_user["id"]) \
             .execute()
@@ -1111,17 +1110,31 @@ async def download_generation_zip(generation_id: str, current_user: Dict = Depen
             raise HTTPException(status_code=404, detail="Generation not found or access denied.")
             
         data = response.data[0]
-        files = data.get("files", [])
+        files = data.get("files") or []
+        
+        # Fallback: older generations stored files as JSON string in 'code' column
+        if not files and data.get("code"):
+            try:
+                parsed = json.loads(data["code"]) if isinstance(data["code"], str) else data["code"]
+                if isinstance(parsed, list):
+                    files = parsed
+            except Exception as parse_err:
+                print(f"Warning: Could not parse code column: {parse_err}")
+                files = []
+        
+        if not files:
+            raise HTTPException(status_code=404, detail="No files found for this generation.")
+        
         description = data.get("description", "No description provided.")
         provider = data.get("provider", "Unknown")
         
         # Build ZIP in memory
         zip_io = io.BytesIO()
         with zipfile.ZipFile(zip_io, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
-            # Add files
             for file in files:
-                zf.writestr(file["filename"], file["content"])
-                
+                if isinstance(file, dict) and file.get("filename") and file.get("content"):
+                    zf.writestr(file["filename"], file["content"])
+                    
             # Add README
             readme_content = f"# TerraformCoder AI Generation\n\n**Provider**: {provider}\n\n**Description**:\n{description}\n\nGenerated by AI. Please review the code before deployment."
             zf.writestr("README.md", readme_content)
@@ -1142,7 +1155,7 @@ async def download_generation_zip(generation_id: str, current_user: Dict = Depen
         raise
     except Exception as e:
         print(f"Error creating ZIP for generation {generation_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create ZIP file.")
+        raise HTTPException(status_code=500, detail=f"Failed to create ZIP file: {str(e)}")
 
 @app.post("/api/billing/checkout")
 async def create_checkout_session(current_user: Dict = Depends(get_current_user)):

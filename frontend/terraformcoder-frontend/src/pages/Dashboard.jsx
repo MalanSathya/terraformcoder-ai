@@ -1,9 +1,8 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { generateCode } from '../services/api';
-import ThemeToggle from '../components/ThemeToggle';
 
-// Enhanced UI Components
+// Components
 import GlassCard from '../components/GlassCard';
 import ProviderSelector from '../components/ProviderSelector';
 import DynamicFileRenderer from '../components/DynamicFileRenderer';
@@ -13,28 +12,23 @@ import HistorySidebar from '../components/HistorySidebar';
 import UpgradeModal from '../components/UpgradeModal';
 import { getGenerationById, downloadGenerationZip, getBillingStatus } from '../services/api';
 
-// Icons from Lucide
 import {
   LogOut,
   Bolt,
-  ArrowRight,
   Loader,
-  Rocket,
   CheckCircle2,
   Copy,
   BrainCircuit,
   DollarSign,
   Layers,
-  Clock,
-  Server,
-  Clipboard,
   Zap,
   Sparkles,
   FileText,
   Eye,
-  TreePine,
   Download,
-  FolderTree, // Added FolderTree import
+  FolderTree,
+  Menu,
+  Send,
 } from 'lucide-react';
 
 const EnhancedDashboard = () => {
@@ -47,7 +41,9 @@ const EnhancedDashboard = () => {
   const [includeDiagram, setIncludeDiagram] = useState(true);
   const [billingStatus, setBillingStatus] = useState({ plan: 'free', generation_count: 0, limit: 5 });
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { user, logout } = useContext(AuthContext);
+
 
   useEffect(() => {
     const fetchBillingStatus = async () => {
@@ -58,10 +54,10 @@ const EnhancedDashboard = () => {
         console.error('Failed to fetch billing status:', err);
       }
     };
-    if (user) {
-      fetchBillingStatus();
-    }
+    if (user) fetchBillingStatus();
   }, [user]);
+
+
 
   const handleSelectHistory = async (id) => {
     setIsLoadingHistory(true);
@@ -69,12 +65,10 @@ const EnhancedDashboard = () => {
     try {
       const res = await getGenerationById(id);
       setResult(res.data);
-      // Optional: Update description and provider to match the history item
       if (res.data.description) setDescription(res.data.description);
       if (res.data.provider) setProvider(res.data.provider);
     } catch (err) {
       console.error('Error loading history item:', err);
-      // Optional: show a toast error here
     } finally {
       setIsLoadingHistory(false);
     }
@@ -82,24 +76,16 @@ const EnhancedDashboard = () => {
 
   const handleGenerate = async () => {
     if (!description.trim()) return;
-
     setIsGenerating(true);
     setResult(null);
     try {
       const token = localStorage.getItem('token');
       const res = await generateCode(description, provider, token, includeDiagram);
-      console.log('API Response:', res.data); // Debug log
       setResult(res.data);
-
-      // Update billing count after successful generation
       if (billingStatus.plan === 'free') {
-        setBillingStatus(prev => ({
-          ...prev,
-          generation_count: prev.generation_count + 1
-        }));
+        setBillingStatus(prev => ({ ...prev, generation_count: prev.generation_count + 1 }));
       }
     } catch (err) {
-      console.error('Generation error:', err); // Debug log
       if (err.response?.status === 429) {
         setIsUpgradeModalOpen(true);
         setResult(null);
@@ -107,10 +93,7 @@ const EnhancedDashboard = () => {
         setResult({
           is_valid_request: false,
           explanation: err.response?.data?.detail || 'An unexpected error occurred. Please try again.',
-          files: [],
-          resources: [],
-          estimated_cost: 'Unknown',
-          file_hierarchy: ''
+          files: [], resources: [], estimated_cost: 'Unknown', file_hierarchy: ''
         });
       }
     } finally {
@@ -119,505 +102,300 @@ const EnhancedDashboard = () => {
   };
 
   const handleDownloadZip = async () => {
-    if (!result?.id) return;
+    if (!result?.id) {
+      alert('No generation ID found. Please generate code first.');
+      return;
+    }
     setIsDownloading(true);
     try {
       await downloadGenerationZip(result.id);
     } catch (err) {
       console.error('Download error:', err);
-      // Optional: Add toast notification for error
+      alert('Download failed. Please try again or check if the backend is running.');
     } finally {
       setIsDownloading(false);
     }
   };
 
-  const handleCopyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    // TODO: Add toast notification for copy success
-  };
+  const handleCopyToClipboard = (text) => navigator.clipboard.writeText(text);
 
   const handleCopyFileHierarchy = () => {
-    if (result?.file_hierarchy) {
-      navigator.clipboard.writeText(result.file_hierarchy);
-      // TODO: Add toast notification
+    if (result?.file_hierarchy) navigator.clipboard.writeText(result.file_hierarchy);
+  };
+
+  const handleNewChat = () => { setResult(null); setDescription(''); };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && description.trim() && !isGenerating) {
+      e.preventDefault();
+      handleGenerate();
     }
   };
 
+  // ── Render: Generation Progress ─────────────────────────
   const renderGenerationProgress = () => {
     if (!isGenerating) return null;
-
     return (
       <GlassCard>
-        <div className="flex flex-col items-center justify-center p-8 space-y-6">
+        <div className="flex flex-col items-center justify-center p-10 space-y-5">
           <div className="relative">
-            <Loader className="w-16 h-16 animate-spin text-emerald-400" />
-            <Sparkles className="w-6 h-6 text-yellow-400 absolute top-5 left-5 animate-pulse" />
+            <div className="w-14 h-14 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
+            <Sparkles className="w-5 h-5 text-emerald-400 absolute top-4 left-4 animate-pulse" />
           </div>
-          <div className="text-center space-y-2">
-            <p className="text-slate-300 text-lg font-medium">AI is crafting your infrastructure code...</p>
-            <p className="text-slate-500 text-sm">Analyzing requirements, generating files, and creating explanations</p>
-          </div>
-          <div className="flex items-center space-x-2 text-xs text-slate-600">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-            <span>Processing with neural networks</span>
+          <div className="text-center space-y-1">
+            <p className="text-slate-200 font-medium">Generating your infrastructure...</p>
+            <p className="text-slate-500 text-sm">AI is crafting production-ready Terraform code</p>
           </div>
         </div>
       </GlassCard>
     );
   };
 
+  // ── Render: File Hierarchy ──────────────────────────────
   const renderFileHierarchy = () => {
-    if (!result?.file_hierarchy) {
-      return (
-        <GlassCard>
-          <div className="flex items-center space-x-2 mb-3">
-            <FolderTree className="w-5 h-5 text-orange-400" />
-            <h4 className="font-semibold text-slate-200">Project Structure</h4>
-            <span className="px-2 py-0.5 bg-orange-500/20 text-orange-300 rounded text-xs">
-              Not Available
-            </span>
-          </div>
-          <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30 border-dashed">
-            <div className="text-center text-slate-500">
-              <TreePine className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">File hierarchy could not be generated for this request.</p>
-            </div>
-          </div>
-        </GlassCard>
-      );
-    }
-
+    if (!result?.file_hierarchy) return null;
     return (
       <GlassCard>
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <FolderTree className="w-5 h-5 text-cyan-400" />
-            <h4 className="font-semibold text-slate-200">Project Structure</h4>
-            <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded text-xs">
+          <div className="flex items-center gap-2">
+            <FolderTree className="w-4 h-4 text-cyan-400" />
+            <h4 className="font-semibold text-slate-200 text-sm">Project Structure</h4>
+            <span className="px-1.5 py-0.5 bg-cyan-500/15 text-cyan-300 rounded-full text-[10px] font-medium">
               {result.files?.length || 0} files
             </span>
           </div>
-          <button
-            onClick={handleCopyFileHierarchy}
-            className="flex items-center space-x-1 px-3 py-1 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg text-xs text-slate-300 transition-colors duration-200"
-            title="Copy file hierarchy"
-          >
-            <Copy className="w-3 h-3" />
-            <span>Copy</span>
+          <button onClick={handleCopyFileHierarchy}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-xs text-slate-400 hover:text-slate-200 transition-colors">
+            <Copy className="w-3 h-3" /><span>Copy</span>
           </button>
         </div>
-        <div className="p-4 bg-slate-900/50 backdrop-blur-sm rounded-xl border border-slate-700/30">
-          <pre className="text-slate-300 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-x-auto">
+        <div className="p-3 bg-slate-950/50 rounded-xl border border-white/[0.04]">
+          <pre className="text-slate-300 font-mono text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto">
             {result.file_hierarchy}
           </pre>
-        </div>
-
-        {/* File Statistics */}
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {result.files && (
-            <>
-              <div className="p-2 bg-slate-800/30 rounded-lg text-center">
-                <div className="text-lg font-bold text-emerald-400">
-                  {result.files.filter(f => f.file_type === 'terraform').length}
-                </div>
-                <div className="text-xs text-slate-500">Terraform</div>
-              </div>
-              <div className="p-2 bg-slate-800/30 rounded-lg text-center">
-                <div className="text-lg font-bold text-blue-400">
-                  {result.files.filter(f => f.file_type === 'ansible').length}
-                </div>
-                <div className="text-xs text-slate-500">Ansible</div>
-              </div>
-              <div className="p-2 bg-slate-800/30 rounded-lg text-center">
-                <div className="text-lg font-bold text-purple-400">
-                  {result.files.filter(f => f.file_type === 'config').length}
-                </div>
-                <div className="text-xs text-slate-500">Config</div>
-              </div>
-              <div className="p-2 bg-slate-800/30 rounded-lg text-center">
-                <div className="text-lg font-bold text-orange-400">
-                  {result.files?.length || 0}
-                </div>
-                <div className="text-xs text-slate-500">Total</div>
-              </div>
-            </>
-          )}
         </div>
       </GlassCard>
     );
   };
 
-  const renderEnhancedResults = () => {
+  // ── Render: Results ─────────────────────────────────────
+  const renderResults = () => {
     if (!result) return null;
-
-    if (!result.is_valid_request) {
-      return <InvalidRequestCard message={result.explanation} />;
-    }
+    if (!result.is_valid_request) return <InvalidRequestCard message={result.explanation} />;
 
     return (
-      <div className="space-y-6">
-        {/* Results Header */}
-        <GlassCard className="animate-in slide-in-from-bottom-4 duration-700">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-gradient-to-r from-green-400 to-emerald-500 rounded-lg flex items-center justify-center shadow-lg">
-                <CheckCircle2 className="w-6 h-6 text-white" />
+      <div className="space-y-4">
+        {/* Success Header — compact */}
+        <GlassCard>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <CheckCircle2 className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                  Infrastructure Generated Successfully
-                </h3>
-                <p className="text-slate-400">Advanced AI processing with neural summarization</p>
+                <h3 className="text-base font-bold text-white">Infrastructure Generated</h3>
+                <p className="text-xs text-slate-400">Production-ready code with AI analysis</p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              {result.id && (
-                <button
-                  onClick={handleDownloadZip}
-                  disabled={isDownloading}
-                  className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-lg text-sm font-medium border border-blue-500/30 flex items-center space-x-1 transition-colors disabled:opacity-50"
-                  title="Download files as ZIP"
-                >
-                  {isDownloading ? (
-                    <Loader className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
-                  <span className="hidden sm:inline">Download ZIP</span>
-                </button>
-              )}
-              {result.cached_response && (
-                <span className="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-lg text-sm font-medium border border-yellow-500/30 flex items-center space-x-1">
-                  <Clipboard className="w-3 h-3" />
-                  <span>Cached</span>
-                </span>
-              )}
-              <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-lg text-sm font-medium border border-emerald-500/30 flex items-center space-x-1">
-                <Clock className="w-3 h-3" />
-                <span>{new Date(result.generated_at).toLocaleTimeString()}</span>
-              </span>
+            {result.id && (
+              <button onClick={handleDownloadZip} disabled={isDownloading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg text-xs font-medium border border-emerald-500/25 transition-all disabled:opacity-50">
+                {isDownloading ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">Download ZIP</span>
+              </button>
+            )}
+          </div>
+
+          {/* Compact Stats */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="p-2.5 bg-white/[0.03] rounded-lg border border-white/[0.04] text-center">
+              <p className="text-lg font-bold text-emerald-400">{result.files?.length || 0}</p>
+              <p className="text-[10px] text-slate-500">Files</p>
+            </div>
+            <div className="p-2.5 bg-white/[0.03] rounded-lg border border-white/[0.04] text-center">
+              <p className="text-lg font-bold text-blue-400">{result.resources?.length || 0}</p>
+              <p className="text-[10px] text-slate-500">Resources</p>
+            </div>
+            <div className="p-2.5 bg-white/[0.03] rounded-lg border border-white/[0.04] text-center">
+              <p className="text-sm font-bold text-green-400">{result.estimated_cost}</p>
+              <p className="text-[10px] text-slate-500">Est. Cost</p>
             </div>
           </div>
 
-          {/* Generation Summary */}
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-              <div className="flex items-center space-x-2 mb-2">
-                <FileText className="w-4 h-4 text-emerald-400" />
-                <h4 className="font-semibold text-slate-200 text-sm">Files Generated</h4>
-              </div>
-              <p className="text-2xl font-bold text-emerald-400">
-                {result.files ? result.files.length : 0}
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Production-ready code files
-              </p>
-            </div>
-
-            <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-              <div className="flex items-center space-x-2 mb-2">
-                <Layers className="w-4 h-4 text-blue-400" />
-                <h4 className="font-semibold text-slate-200 text-sm">Resources</h4>
-              </div>
-              <p className="text-2xl font-bold text-blue-400">
-                {result.resources ? result.resources.length : 0}
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Cloud infrastructure components
-              </p>
-            </div>
-
-            <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-              <div className="flex items-center space-x-2 mb-2">
-                <DollarSign className="w-4 h-4 text-green-400" />
-                <h4 className="font-semibold text-slate-200 text-sm">Est. Cost</h4>
-              </div>
-              <p className="text-lg font-bold text-green-400">
-                {result.estimated_cost}
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Monthly estimate
-              </p>
-            </div>
-          </div>
-
-          {/* Explanation */}
+          {/* AI Analysis */}
           {result.explanation && (
-            <div className="mt-6 p-4 bg-gradient-to-r from-slate-800/30 to-slate-700/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-              <div className="flex items-center space-x-2 mb-3">
-                <BrainCircuit className="w-5 h-5 text-purple-400" />
-                <h4 className="font-semibold text-slate-200">AI Analysis</h4>
+            <div className="mt-4 p-3 bg-white/[0.03] rounded-lg border border-white/[0.04]">
+              <div className="flex items-center gap-1.5 mb-2">
+                <BrainCircuit className="w-3.5 h-3.5 text-purple-400" />
+                <h4 className="font-medium text-slate-200 text-xs">AI Analysis</h4>
               </div>
-              <p className="text-slate-300 leading-relaxed text-sm">
-                {result.explanation}
-              </p>
+              <p className="text-slate-300 text-xs leading-relaxed">{result.explanation}</p>
             </div>
           )}
         </GlassCard>
 
-        {/* Enhanced Architecture Diagram */}
+        {/* Architecture Diagram */}
         <EnhancedArchitectureDiagram
           architectureDiagram={result.architecture_diagram}
           resources={result.resources}
           description={description}
         />
 
-        {/* File Hierarchy - Enhanced Display */}
+        {/* File Hierarchy */}
         {renderFileHierarchy()}
 
-        {/* Dynamic File Renderer */}
+        {/* Generated Files */}
         {result.files && result.files.length > 0 && (
           <GlassCard>
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-r from-orange-400 to-red-500 rounded-lg flex items-center justify-center shadow-lg">
-                <FileText className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-red-500 rounded-lg flex items-center justify-center shadow-lg">
+                <FileText className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h3 className="text-xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                  Generated Files
-                </h3>
-                <p className="text-sm text-slate-400">Production-ready infrastructure code</p>
+                <h3 className="text-base font-bold text-white">Infrastructure Code</h3>
+                <p className="text-xs text-slate-400">{result.files.length} files generated</p>
               </div>
             </div>
-            <DynamicFileRenderer
-              files={result.files}
-              onCopy={handleCopyToClipboard}
-            />
+            <DynamicFileRenderer files={result.files} onCopy={handleCopyToClipboard} />
           </GlassCard>
         )}
 
-        {/* Additional Metadata */}
-        {result.resources && result.resources.length > 0 && (
-          <GlassCard>
-            <div className="flex items-center space-x-2 mb-4">
-              <Layers className="w-5 h-5 text-indigo-400" />
-              <h4 className="font-semibold text-slate-200">Resource Breakdown</h4>
-            </div>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {(() => {
-                const groupedResources = result.resources.reduce((acc, resource) => {
-                  const type = resource.split('_')[0] || 'other';
-                  if (!acc[type]) acc[type] = [];
-                  acc[type].push(resource);
-                  return acc;
-                }, {});
-
-                return Object.entries(groupedResources).map(([type, resources]) => (
-                  <div key={type} className="p-3 bg-slate-800/30 backdrop-blur-sm rounded-lg border border-slate-700/30">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <div className="w-3 h-3 bg-indigo-400 rounded-full"></div>
-                      <h5 className="font-medium text-slate-200 text-sm capitalize">{type}</h5>
-                      <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-xs">
-                        {resources.length}
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      {resources.slice(0, 3).map((resource, idx) => (
-                        <div key={idx} className="text-xs text-slate-400 truncate">
-                          {resource}
-                        </div>
-                      ))}
-                      {resources.length > 3 && (
-                        <div className="text-xs text-slate-500">
-                          +{resources.length - 3} more
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-          </GlassCard>
-        )}
       </div>
     );
   };
 
-  return (
-
-    <div className="relative min-h-screen bg-gradient-to-br 
-  from-purple-100 via-indigo-100 to-cyan-100 
-  dark:from-slate-900 dark:via-purple-900 dark:to-slate-900 
-  font-sans text-black dark:text-white transition-colors duration-500 ease-in-out">
-
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-emerald-500 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse delay-2000"></div>
-      </div>
-
-
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between p-6">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg">
-            <Bolt className="w-6 h-6 text-white" />
+  // ── Input Bar ───────────────────────────────────────────
+  const renderInputBar = () => (
+    <div className="w-full max-w-3xl mx-auto">
+      <div className="relative bg-white/[0.04] border border-white/[0.08] rounded-2xl backdrop-blur-xl shadow-2xl transition-all duration-300 focus-within:border-emerald-500/30 focus-within:shadow-emerald-500/5">
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="w-full bg-transparent text-white placeholder-slate-500 px-5 pt-4 pb-14 rounded-2xl resize-none focus:outline-none text-sm leading-relaxed"
+          rows={hasResults ? 2 : 4}
+          placeholder="Describe your cloud infrastructure... (e.g., 'Create a secure AWS VPC with subnets, ALB, EC2, and RDS')"
+        />
+        <div className="absolute bottom-0 left-0 right-0 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ProviderSelector selectedProvider={provider} onProviderChange={setProvider} />
+            <button onClick={() => setIncludeDiagram(!includeDiagram)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 border
+                ${includeDiagram
+                  ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
+                  : 'bg-white/[0.04] border-white/[0.08] text-slate-500 hover:text-slate-300'}`}>
+              <Eye className="w-3 h-3" /><span>Diagram</span>
+            </button>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-              AI Terraform Coder
-            </h1>
-            <p className="text-sm text-slate-400">Enhanced Infrastructure Generation</p>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-600">{description.length}/1000</span>
+            <button onClick={handleGenerate} disabled={!description.trim() || isGenerating}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white shadow-lg shadow-emerald-500/20 transition-all duration-200 disabled:opacity-30 disabled:shadow-none disabled:cursor-not-allowed hover:scale-105">
+              {isGenerating ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
 
-        <div className="flex items-center space-x-4">
+  // ── Main Layout ─────────────────────────────────────────
+  const hasResults = result || isGenerating || isLoadingHistory;
+
+  return (
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/50 to-slate-950 font-sans text-white flex flex-col">
+      {/* Ambient background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-emerald-600/5 rounded-full blur-3xl" />
+      </div>
+
+      {/* Sidebar (logout moved here — see HistorySidebar) */}
+      <HistorySidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        onSelect={handleSelectHistory}
+        onNewChat={handleNewChat}
+        onLogout={logout}
+      />
+
+      {/* Header — minimal, no logout (moved to sidebar) */}
+      <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-white/[0.04] flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setIsSidebarOpen(true)}
+            className="p-2 rounded-xl hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors">
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Bolt className="w-4 h-4 text-white" />
+            </div>
+            <h1 className="text-lg font-semibold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent hidden sm:block">
+              AI Terraform Coder
+            </h1>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
           {billingStatus.plan === 'free' && (
-            <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50">
-              <Zap className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-medium text-slate-300">
-                {billingStatus.generation_count} / {billingStatus.limit}
-              </span>
-              <span className="text-xs text-slate-500 ml-1">used</span>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.04] rounded-full border border-white/[0.06] text-xs">
+              <Zap className="w-3 h-3 text-emerald-400" />
+              <span className="text-slate-300 font-medium">{billingStatus.generation_count}/{billingStatus.limit}</span>
             </div>
           )}
-          <ThemeToggle />
-
-          <button
-            onClick={logout}
-            className="group relative px-4 py-2 bg-slate-800/50 backdrop-blur-md text-white border border-slate-700/50 rounded-xl shadow-lg hover:bg-slate-700/50 transition-all duration-300 hover:scale-105"
-          >
-            <span className="flex items-center space-x-2">
-              <span>Logout</span>
-              <LogOut className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
-            </span>
-          </button>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 max-w-7xl mx-auto px-6 pb-20 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Sidebar */}
-        <div className="lg:col-span-1 hidden lg:block">
-          <HistorySidebar onSelect={handleSelectHistory} />
-        </div>
-
-        {/* Main Workspace */}
-        <div className="lg:col-span-3 space-y-8">
-          {/* Enhanced Input Section */}
-          <GlassCard className="mb-8">
-            <div className="flex items-center space-x-4 mb-6">
-              <div className="w-16 h-16 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center shadow-lg">
-                <Server className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h2 className="text-3xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                  Welcome back, {user?.name || 'Developer'}
-                </h2>
-                <p className="text-slate-400 text-lg">
-                  Describe your infrastructure needs and watch AI create production-ready code
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div className="relative">
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full p-4 rounded-xl bg-slate-800/50 backdrop-blur-sm text-white border border-slate-700/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all duration-300 placeholder-slate-400 resize-none font-mono"
-                  rows={5}
-                  placeholder="e.g., 'Create a secure AWS VPC with public and private subnets, load balancer, EC2 instances, and RDS database with automated backup and monitoring.'"
-                />
-                <div className="absolute bottom-3 right-3 flex items-center space-x-2">
-                  <span className="text-xs text-slate-500">
-                    {description.length}/1000
-                  </span>
-                  {description.length > 0 && (
-                    <div className={`w-2 h-2 rounded-full ${description.length > 900 ? 'bg-red-400' : description.length > 700 ? 'bg-yellow-400' : 'bg-green-400'}`}></div>
-                  )}
+      <main className="relative z-10 flex-1 flex flex-col min-h-0">
+        {!hasResults ? (
+          /* ── EMPTY STATE: Centered greeting ── */
+          <div className="flex-1 flex flex-col items-center justify-center px-6 pb-20">
+            <div className="text-center mb-10 max-w-2xl">
+              <div className="animate-fade-in-up">
+                <div className="w-14 h-14 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-emerald-500/20">
+                  <Sparkles className="w-7 h-7 text-white" />
                 </div>
               </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center space-x-4">
-                  <ProviderSelector selectedProvider={provider} onProviderChange={setProvider} />
-
-                  {/* Diagram Toggle */}
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="include-diagram"
-                      checked={includeDiagram}
-                      onChange={(e) => setIncludeDiagram(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 bg-slate-700 border-slate-600 rounded focus:ring-emerald-500 focus:ring-2"
-                    />
-                    <label htmlFor="include-diagram" className="text-slate-300 text-sm flex items-center space-x-1">
-                      <Eye className="w-3 h-3" />
-                      <span>Generate Diagram</span>
-                    </label>
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleGenerate}
-                  disabled={!description.trim() || isGenerating}
-                  className="group relative w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-emerald-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105"
-                >
-                  <span className="flex items-center justify-center space-x-3">
-                    {isGenerating ? (
-                      <>
-                        <Loader className="animate-spin w-5 h-5" />
-                        <span>Processing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Rocket className="w-5 h-5" />
-                        <span>Generate Infrastructure</span>
-                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
-                      </>
-                    )}
-                  </span>
-                </button>
-              </div>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-3 animate-fade-in-up">
+                Welcome back{user?.name ? `, ${user.name}` : ''}.
+              </h2>
+              <p className="text-lg text-slate-400 animate-fade-in-up-delay">
+                What infrastructure are we building today?
+              </p>
             </div>
-          </GlassCard>
-
-          {/* Generation Progress */}
-          {renderGenerationProgress()}
-
-          {/* Enhanced Results */}
-          {isLoadingHistory ? (
-            <GlassCard>
-              <div className="flex flex-col items-center justify-center p-8 space-y-4">
-                <Loader className="w-12 h-12 text-blue-400 animate-spin" />
-                <p className="text-slate-300">Loading infrastructure details...</p>
-              </div>
-            </GlassCard>
-          ) : (
-            renderEnhancedResults()
-          )}
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="relative z-10 mt-16 border-t border-slate-800/50 bg-slate-900/30 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 py-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between">
-            <div className="text-center sm:text-left text-sm text-slate-400">
-              <span>© {new Date().getFullYear()} AI Terraform Coder.</span>
-            </div>
-            <div className="flex items-center space-x-4 mt-4 sm:mt-0">
-              <div className="flex items-center space-x-2 text-xs text-slate-500">
-                <Zap className="w-3 h-3" />
-                <span>Neural Processing</span>
-              </div>
-              <div className="flex items-center space-x-2 text-xs text-slate-500">
-                <Eye className="w-3 h-3" />
-                <span>Mermaid Charts</span>
-              </div>
+            <div className="animate-fade-in-up-delay-2 w-full">
+              {renderInputBar()}
             </div>
           </div>
-        </div>
-      </footer>
+        ) : (
+          /* ── RESULTS STATE: Scrollable results + input at bottom ── */
+          <>
+            {/* Scrollable results area */}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="max-w-4xl mx-auto space-y-4">
+                {isLoadingHistory && (
+                  <GlassCard>
+                    <div className="flex flex-col items-center justify-center p-6 space-y-3">
+                      <Loader className="w-8 h-8 text-blue-400 animate-spin" />
+                      <p className="text-slate-300 text-sm">Loading infrastructure details...</p>
+                    </div>
+                  </GlassCard>
+                )}
+                {renderGenerationProgress()}
+                {renderResults()}
+              </div>
+            </div>
 
-      {/* Upgrade Modal */}
-      <UpgradeModal
-        isOpen={isUpgradeModalOpen}
-        onClose={() => setIsUpgradeModalOpen(false)}
-      />
+            {/* Input bar fixed at bottom */}
+            <div className="flex-shrink-0 px-6 py-4 border-t border-white/[0.04]">
+              {renderInputBar()}
+            </div>
+          </>
+        )}
+      </main>
+
+      <UpgradeModal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} />
     </div>
   );
 };
