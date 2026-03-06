@@ -203,82 +203,16 @@ const EnhancedArchitectureDiagram = ({ architectureDiagram, resources, descripti
             )}
           </div>
 
-          {/* Architecture Description */}
+          {/* Architecture Overview Description */}
           {architectureDiagram?.diagram_description && (
-            <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30 mb-6">
-              <div className="flex items-center space-x-2 mb-3">
+            <div className="p-4 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
+              <div className="flex items-center space-x-2 mb-2">
                 <NetworkIcon className="w-5 h-5 text-cyan-400" />
                 <h4 className="font-semibold text-slate-200">Architecture Overview</h4>
               </div>
               <p className="text-slate-300 text-sm leading-relaxed">
                 {architectureDiagram.diagram_description}
               </p>
-            </div>
-          )}
-
-          {/* Components, Resources, and Data Flow — 3-column row */}
-          {architectureDiagram?.components && architectureDiagram.components.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Components */}
-              <div className="p-3 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <div className="w-3 h-3 bg-emerald-400 rounded-full"></div>
-                  <h4 className="font-semibold text-slate-200 text-xs">Components</h4>
-                  <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-[10px]">
-                    {architectureDiagram.components.length}
-                  </span>
-                </div>
-                <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {architectureDiagram.components.map((component, index) => (
-                    <div key={index} className="flex items-center gap-2 p-1.5 bg-slate-900/50 rounded-lg text-xs">
-                      <span>{getComponentIcon(component)}</span>
-                      <span className="text-slate-300 truncate">{component}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Resources */}
-              {resources && resources.length > 0 && (
-                <div className="p-3 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <div className="w-3 h-3 bg-indigo-400 rounded-full"></div>
-                    <h4 className="font-semibold text-slate-200 text-xs">Resources</h4>
-                    <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[10px]">
-                      {resources.length}
-                    </span>
-                  </div>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {resources.map((resource, idx) => (
-                      <div key={idx} className="text-xs text-slate-400 truncate p-1.5 bg-slate-900/50 rounded-lg">
-                        {resource}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Data Flow */}
-              {architectureDiagram?.connections && architectureDiagram.connections.length > 0 && (
-                <div className="p-3 bg-slate-800/30 backdrop-blur-sm rounded-xl border border-slate-700/30">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <ArrowRight className="w-3 h-3 text-blue-400" />
-                    <h4 className="font-semibold text-slate-200 text-xs">Data Flow</h4>
-                    <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px]">
-                      {architectureDiagram.connections.length}
-                    </span>
-                  </div>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {architectureDiagram.connections.map((connection, index) => (
-                      <div key={index} className="flex items-center gap-1 p-1.5 bg-slate-900/50 rounded-lg text-xs">
-                        <span className="text-slate-300 truncate flex-1">{connection.from}</span>
-                        <ArrowRight className={`w-2.5 h-2.5 ${getConnectionColor(connection.type)} flex-shrink-0`} />
-                        <span className="text-slate-300 truncate flex-1">{connection.to}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>

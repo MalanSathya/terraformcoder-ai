@@ -26,6 +26,7 @@ import {
   FolderTree,
   Menu,
   Send,
+  ArrowRight,
 } from 'lucide-react';
 
 const EnhancedDashboard = () => {
@@ -238,6 +239,73 @@ const EnhancedDashboard = () => {
           description={description}
         />
 
+        {/* Components, Resources, Data Flow — 3-column row (rendered independently of diagram) */}
+        {(result.architecture_diagram?.components?.length > 0 || result.resources?.length > 0 || result.architecture_diagram?.connections?.length > 0) && (
+          <GlassCard>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Components */}
+              {result.architecture_diagram?.components?.length > 0 && (
+                <div className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <div className="w-3 h-3 bg-emerald-400 rounded-full"></div>
+                    <h4 className="font-semibold text-slate-200 text-xs">Components</h4>
+                    <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-[10px]">
+                      {result.architecture_diagram.components.length}
+                    </span>
+                  </div>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {result.architecture_diagram.components.map((c, i) => (
+                      <div key={i} className="flex items-center gap-2 p-1.5 bg-slate-900/50 rounded-lg text-xs">
+                        <span className="text-slate-300 truncate">{c}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Resources */}
+              {result.resources?.length > 0 && (
+                <div className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <div className="w-3 h-3 bg-indigo-400 rounded-full"></div>
+                    <h4 className="font-semibold text-slate-200 text-xs">Resources</h4>
+                    <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[10px]">
+                      {result.resources.length}
+                    </span>
+                  </div>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {result.resources.map((r, i) => (
+                      <div key={i} className="text-xs text-slate-400 truncate p-1.5 bg-slate-900/50 rounded-lg">{r}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Data Flow */}
+              {result.architecture_diagram?.connections?.length > 0 && (
+                <div className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <ArrowRight className="w-3 h-3 text-blue-400" />
+                    <h4 className="font-semibold text-slate-200 text-xs">Data Flow</h4>
+                    <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px]">
+                      {result.architecture_diagram.connections.length}
+                    </span>
+                  </div>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {result.architecture_diagram.connections.map((conn, i) => (
+                      <div key={i} className="flex items-center gap-1 p-1.5 bg-slate-900/50 rounded-lg text-xs">
+                        <span className="text-slate-300 truncate flex-1">{conn.from}</span>
+                        <ArrowRight className="w-2.5 h-2.5 text-slate-500 flex-shrink-0" />
+                        <span className="text-slate-300 truncate flex-1">{conn.to}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </GlassCard>
+        )}
+
         {/* File Hierarchy */}
         {renderFileHierarchy()}
 
@@ -254,13 +322,11 @@ const EnhancedDashboard = () => {
                   <p className="text-xs text-slate-400">{result.files.length} files generated</p>
                 </div>
               </div>
-              {result.id && (
-                <button onClick={handleDownloadZip} disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg text-xs font-medium border border-emerald-500/25 transition-all disabled:opacity-50">
-                  {isDownloading ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                  <span>Download ZIP</span>
-                </button>
-              )}
+              <button onClick={handleDownloadZip} disabled={isDownloading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg text-xs font-medium border border-emerald-500/25 transition-all disabled:opacity-50">
+                {isDownloading ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>Download ZIP</span>
+              </button>
             </div>
             <DynamicFileRenderer files={result.files} onCopy={handleCopyToClipboard} />
           </GlassCard>
