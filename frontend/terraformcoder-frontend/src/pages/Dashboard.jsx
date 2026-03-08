@@ -19,7 +19,6 @@ import {
   CheckCircle2,
   Copy,
   Check,
-  BrainCircuit,
   Zap,
   Sparkles,
   FileText,
@@ -295,7 +294,7 @@ const EnhancedDashboard = () => {
               </div>
 
               {/* Collapsible generated files for assistant messages */}
-              {msg.role === 'assistant' && msg.result && msg.result.is_valid_request !== false && msg.result.files?.length > 0 && (
+              {msg.role === 'assistant' && msg.result && msg.result.is_valid_request !== false && msg.result.files?.length > 0 && idx !== messages.findIndex(m => m.role === 'assistant') && (
                 <CollapsibleResults result={msg.result} />
               )}
             </div>
@@ -389,16 +388,6 @@ const EnhancedDashboard = () => {
             </div>
           </div>
 
-          {/* AI Analysis */}
-          {result.explanation && (
-            <div className="mt-4 p-3 bg-white/[0.03] rounded-lg border border-white/[0.04]">
-              <div className="flex items-center gap-1.5 mb-2">
-                <BrainCircuit className="w-3.5 h-3.5 text-purple-400" />
-                <h4 className="font-medium text-slate-200 text-xs">AI Analysis</h4>
-              </div>
-              <p className="text-slate-300 text-xs leading-relaxed">{result.explanation}</p>
-            </div>
-          )}
         </GlassCard>
 
         {/* Architecture Diagram */}
@@ -654,8 +643,10 @@ const EnhancedDashboard = () => {
             </div>
 
             {/* Sticky bottom input bar */}
-            <div className="sticky bottom-0 z-30 px-6 py-4 border-t border-white/[0.06] bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent backdrop-blur-md">
-              {renderInputBar()}
+            <div className="sticky bottom-0 z-30 px-6 py-4 bg-transparent pt-10 pb-8 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pointer-events-none">
+              <div className="pointer-events-auto">
+                {renderInputBar()}
+              </div>
             </div>
           </>
         )}
