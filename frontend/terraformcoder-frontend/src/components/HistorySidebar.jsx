@@ -18,10 +18,12 @@ const HistorySidebar = ({ isOpen, onClose, onSelect, onNewChat, onLogout, onCont
             fetchHistory();
             fetchOrgs();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
     useEffect(() => {
         if (isOpen) fetchHistory();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewMode]);
 
     const fetchOrgs = async () => {
