@@ -1063,9 +1063,9 @@ def health_check():
 
 class GenerationHistory(BaseModel):
     id: str
-    description: str
-    provider: str
-    estimated_cost: str
+    description: Optional[str] = "No description"
+    provider: Optional[str] = "aws"
+    estimated_cost: Optional[str] = "Unknown"
     created_at: str
 
 @app.get("/api/history", response_model=List[GenerationHistory])

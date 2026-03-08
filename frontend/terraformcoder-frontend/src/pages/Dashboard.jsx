@@ -30,8 +30,6 @@ import {
   ArrowRight,
   Share2,
   Link2,
-  ChevronDown,
-  ChevronUp,
   User,
   Bot,
 } from 'lucide-react';
@@ -293,10 +291,6 @@ const EnhancedDashboard = () => {
                 </div>
               </div>
 
-              {/* Collapsible generated files for assistant messages */}
-              {msg.role === 'assistant' && msg.result && msg.result.is_valid_request !== false && msg.result.files?.length > 0 && idx !== messages.findIndex(m => m.role === 'assistant') && (
-                <CollapsibleResults result={msg.result} />
-              )}
             </div>
           </div>
         ))}
@@ -514,7 +508,7 @@ const EnhancedDashboard = () => {
   // ── Input Bar ───────────────────────────────────────────
   const renderInputBar = () => (
     <div className="w-full max-w-3xl mx-auto">
-      <div className="relative bg-white/[0.04] border border-white/[0.08] rounded-2xl backdrop-blur-xl shadow-2xl transition-all duration-300 focus-within:border-emerald-500/30 focus-within:shadow-emerald-500/5">
+      <div className="relative bg-transparent transition-all duration-300">
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -653,29 +647,6 @@ const EnhancedDashboard = () => {
       </main>
 
       <UpgradeModal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} />
-    </div>
-  );
-};
-
-// ── Collapsible Results Component ─────────────────────────
-const CollapsibleResults = ({ result }) => {
-  const [expanded, setExpanded] = useState(false);
-
-  if (!result?.files?.length) return null;
-
-  return (
-    <div className="mt-2 ml-9">
-      <button onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.04] border border-white/[0.06] rounded-lg text-xs text-slate-400 hover:text-white hover:bg-white/[0.08] transition-all">
-        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-        <FileText className="w-3 h-3" />
-        <span>View Generated Files ({result.files.length})</span>
-      </button>
-      {expanded && (
-        <div className="mt-3 space-y-2">
-          <DynamicFileRenderer files={result.files} onCopy={(text) => navigator.clipboard.writeText(text)} />
-        </div>
-      )}
     </div>
   );
 };
