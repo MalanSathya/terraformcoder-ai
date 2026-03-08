@@ -1,7 +1,7 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import JSZip from 'jszip';
 import { AuthContext } from '../context/AuthContext';
-import { generateCode } from '../services/api';
+import { generateCode, shareGeneration } from '../services/api';
 
 // Components
 import GlassCard from '../components/GlassCard';
@@ -18,6 +18,7 @@ import {
   Loader,
   CheckCircle2,
   Copy,
+  Check,
   BrainCircuit,
   Zap,
   Sparkles,
@@ -28,6 +29,12 @@ import {
   Menu,
   Send,
   ArrowRight,
+  Share2,
+  Link2,
+  ChevronDown,
+  ChevronUp,
+  User,
+  Bot,
 } from 'lucide-react';
 
 const EnhancedDashboard = () => {
@@ -44,6 +51,15 @@ const EnhancedDashboard = () => {
   const { user, logout } = useContext(AuthContext);
   const scrollRef = useRef(null);
 
+  // Chat state (Feature 2)
+  const [messages, setMessages] = useState([]); // [{role, content, result?}]
+
+  // Share state (Feature 1)
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [isShared, setIsShared] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
 
   useEffect(() => {
     const fetchBillingStatus = async () => {
@@ -57,19 +73,22 @@ const EnhancedDashboard = () => {
     if (user) fetchBillingStatus();
   }, [user]);
 
-  // Auto-scroll to bottom when new results arrive
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
-    if ((result || isGenerating) && scrollRef.current) {
+    if ((messages.length > 0 || isGenerating) && scrollRef.current) {
       setTimeout(() => {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }, 100);
     }
-  }, [result, isGenerating]);
+  }, [messages, isGenerating]);
 
 
   const handleSelectHistory = async (id) => {
     setIsLoadingHistory(true);
     setResult(null);
+    setMessages([]);
+    setShareUrl('');
+    setIsShared(false);
     try {
       const res = await getGenerationById(id);
       setResult(res.data);
@@ -82,27 +101,93 @@ const EnhancedDashboard = () => {
     }
   };
 
+  // "Continue this" — loads the generation as first assistant message in a new chat thread
+  const handleContinueHistory = async (id) => {
+    setIsLoadingHistory(true);
+    setResult(null);
+    setShareUrl('');
+    setIsShared(false);
+    try {
+      const res = await getGenerationById(id);
+      const data = res.data;
+      // Start a new chat thread with this as the first assistant message
+      setMessages([
+        {
+          role: 'assistant',
+          content: data.explanation || 'Infrastructure generated.',
+          result: data,
+        },
+      ]);
+      setResult(data);
+      setDescription('');
+      if (data.provider) setProvider(data.provider);
+    } catch (err) {
+      console.error('Error loading history for continue:', err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!description.trim()) return;
     setIsGenerating(true);
-    setResult(null);
+    setShareUrl('');
+    setIsShared(false);
+
+    // Append user message to chat
+    const userMsg = { role: 'user', content: description };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+
     try {
       const token = localStorage.getItem('token');
-      const res = await generateCode(description, provider, token, includeDiagram);
-      setResult(res.data);
+
+      // Build conversation history from the last 6 messages
+      const conversationHistory = newMessages.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.role === 'assistant' ? (m.result?.explanation || m.content) : m.content,
+      }));
+
+      // Determine parent generation ID (last assistant message with a result)
+      let parentGenerationId = null;
+      for (let i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].role === 'assistant' && newMessages[i].result?.id) {
+          parentGenerationId = newMessages[i].result.id;
+          break;
+        }
+      }
+
+      const res = await generateCode(description, provider, token, includeDiagram, conversationHistory, parentGenerationId);
+      const data = res.data;
+
+      // Append assistant message
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: data.explanation || 'Infrastructure generated.', result: data },
+      ]);
+
+      setResult(data);
+      setDescription('');
+
       if (billingStatus.plan === 'free') {
-        setBillingStatus(prev => ({ ...prev, generation_count: prev.generation_count + 1 }));
+        setBillingStatus((prev) => ({ ...prev, generation_count: prev.generation_count + 1 }));
       }
     } catch (err) {
       if (err.response?.status === 429) {
         setIsUpgradeModalOpen(true);
-        setResult(null);
+        // Remove the user message we just added since it failed
+        setMessages(messages);
       } else {
-        setResult({
+        const errorResult = {
           is_valid_request: false,
           explanation: err.response?.data?.detail || 'An unexpected error occurred. Please try again.',
           files: [], resources: [], estimated_cost: 'Unknown', file_hierarchy: ''
-        });
+        };
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: errorResult.explanation, result: errorResult },
+        ]);
+        setResult(errorResult);
       }
     } finally {
       setIsGenerating(false);
@@ -116,18 +201,15 @@ const EnhancedDashboard = () => {
     }
     setIsDownloading(true);
     try {
-      // Try server-side download if we have an ID
       if (result.id) {
         await downloadGenerationZip(result.id);
       } else {
-        // Fallback: generate ZIP client-side from in-memory files
         const zip = new JSZip();
         result.files.forEach((file) => {
           if (file.filename && file.content) {
             zip.file(file.filename, file.content);
           }
         });
-        // Add a README
         zip.file('README.md', `# TerraformCoder AI Generation\n\n**Provider**: ${result.provider || 'Unknown'}\n\nGenerated by AI. Please review the code before deployment.`);
         const blob = await zip.generateAsync({ type: 'blob' });
         const url = window.URL.createObjectURL(blob);
@@ -147,13 +229,38 @@ const EnhancedDashboard = () => {
     }
   };
 
+  const handleShare = async () => {
+    if (!result?.id) return;
+    setIsSharing(true);
+    try {
+      const res = await shareGeneration(result.id);
+      if (res.data.shared) {
+        setIsShared(true);
+        setShareUrl(res.data.url);
+      } else {
+        setIsShared(false);
+        setShareUrl('');
+      }
+    } catch (err) {
+      console.error('Share error:', err);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleCopyShareUrl = () => {
+    navigator.clipboard.writeText(shareUrl);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  };
+
   const handleCopyToClipboard = (text) => navigator.clipboard.writeText(text);
 
   const handleCopyFileHierarchy = () => {
     if (result?.file_hierarchy) navigator.clipboard.writeText(result.file_hierarchy);
   };
 
-  const handleNewChat = () => { setResult(null); setDescription(''); };
+  const handleNewChat = () => { setResult(null); setDescription(''); setMessages([]); setShareUrl(''); setIsShared(false); };
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey && description.trim() && !isGenerating) {
@@ -162,70 +269,109 @@ const EnhancedDashboard = () => {
     }
   };
 
+  // ── Render: Chat Messages ──────────────────────────────
+  const renderChatMessages = () => {
+    if (messages.length === 0 && !isGenerating && !isLoadingHistory) return null;
+
+    return (
+      <div className="space-y-4">
+        {messages.map((msg, idx) => (
+          <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-2' : 'order-1'}`}>
+              {/* Message bubble */}
+              <div className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user'
+                    ? 'bg-gradient-to-br from-emerald-400 to-cyan-400'
+                    : 'bg-gradient-to-br from-purple-400 to-violet-500'
+                  }`}>
+                  {msg.role === 'user' ? <User className="w-3.5 h-3.5 text-white" /> : <Bot className="w-3.5 h-3.5 text-white" />}
+                </div>
+                <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${msg.role === 'user'
+                    ? 'bg-emerald-500/15 border border-emerald-500/25 text-emerald-100 rounded-br-md'
+                    : 'bg-white/[0.04] border border-white/[0.08] text-slate-300 rounded-bl-md'
+                  }`}>
+                  {msg.content}
+                </div>
+              </div>
+
+              {/* Collapsible generated files for assistant messages */}
+              {msg.role === 'assistant' && msg.result && msg.result.is_valid_request !== false && msg.result.files?.length > 0 && (
+                <CollapsibleResults result={msg.result} />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   // ── Render: Generation Progress ─────────────────────────
   const renderGenerationProgress = () => {
     if (!isGenerating) return null;
     return (
-      <GlassCard>
-        <div className="flex flex-col items-center justify-center p-10 space-y-5">
-          <div className="relative">
-            <div className="w-14 h-14 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
-            <Sparkles className="w-5 h-5 text-emerald-400 absolute top-4 left-4 animate-pulse" />
-          </div>
-          <div className="text-center space-y-1">
-            <p className="text-slate-200 font-medium">Generating your infrastructure...</p>
-            <p className="text-slate-500 text-sm">AI is crafting production-ready Terraform code</p>
+      <div className="flex justify-start">
+        <div className="max-w-[85%]">
+          <div className="flex items-start gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-violet-500 flex items-center justify-center flex-shrink-0">
+              <Bot className="w-3.5 h-3.5 text-white" />
+            </div>
+            <div className="px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl rounded-bl-md">
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
+                <span className="text-slate-400 text-sm">Generating infrastructure...</span>
+              </div>
+            </div>
           </div>
         </div>
-      </GlassCard>
+      </div>
     );
   };
 
-  // ── Render: File Hierarchy ──────────────────────────────
-  const renderFileHierarchy = () => {
-    if (!result?.file_hierarchy) return null;
-    return (
-      <GlassCard>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <FolderTree className="w-4 h-4 text-cyan-400" />
-            <h4 className="font-semibold text-slate-200 text-sm">Project Structure</h4>
-            <span className="px-1.5 py-0.5 bg-cyan-500/15 text-cyan-300 rounded-full text-[10px] font-medium">
-              {result.files?.length || 0} files
-            </span>
-          </div>
-          <button onClick={handleCopyFileHierarchy}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-xs text-slate-400 hover:text-slate-200 transition-colors">
-            <Copy className="w-3 h-3" /><span>Copy</span>
-          </button>
-        </div>
-        <div className="p-3 bg-slate-950/50 rounded-xl border border-white/[0.04]">
-          <pre className="text-slate-300 font-mono text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto">
-            {result.file_hierarchy}
-          </pre>
-        </div>
-      </GlassCard>
-    );
-  };
-
-  // ── Render: Results ─────────────────────────────────────
-  const renderResults = () => {
+  // ── Render: Active Result Panel (shown for the latest result) ─
+  const renderActiveResult = () => {
     if (!result) return null;
     if (!result.is_valid_request) return <InvalidRequestCard message={result.explanation} />;
 
     return (
       <div className="space-y-4">
-        {/* Success Header — compact */}
+        {/* Success Header */}
         <GlassCard>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <CheckCircle2 className="w-4 h-4 text-white" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <CheckCircle2 className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Infrastructure Generated</h3>
+                <p className="text-xs text-slate-400">Production-ready code with AI analysis</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-base font-bold text-white">Infrastructure Generated</h3>
-              <p className="text-xs text-slate-400">Production-ready code with AI analysis</p>
-            </div>
+
+            {/* Share button */}
+            {result.id && (
+              <button onClick={handleShare} disabled={isSharing}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all disabled:opacity-50 ${isShared
+                    ? 'bg-blue-500/15 border-blue-500/25 text-blue-300 hover:bg-blue-500/25'
+                    : 'bg-white/[0.04] border-white/[0.08] text-slate-400 hover:text-white hover:bg-white/[0.08]'
+                  }`}>
+                {isSharing ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
+                <span>{isShared ? 'Unshare' : 'Share'}</span>
+              </button>
+            )}
           </div>
+
+          {/* Share URL inline display */}
+          {isShared && shareUrl && (
+            <div className="mb-4 flex items-center gap-2 p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+              <Link2 className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+              <p className="text-xs text-blue-300 flex-1 font-mono truncate">{shareUrl}</p>
+              <button onClick={handleCopyShareUrl}
+                className="px-2.5 py-1 bg-blue-500/20 rounded-lg text-xs text-blue-300 hover:bg-blue-500/30 transition-colors flex items-center gap-1 flex-shrink-0">
+                {shareCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {shareCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          )}
 
           {/* Compact Stats */}
           <div className="grid grid-cols-3 gap-2">
@@ -262,11 +408,10 @@ const EnhancedDashboard = () => {
           description={description}
         />
 
-        {/* Components, Resources, Data Flow — 3-column row (rendered independently of diagram) */}
+        {/* Components, Resources, Data Flow */}
         {(result.architecture_diagram?.components?.length > 0 || result.resources?.length > 0 || result.architecture_diagram?.connections?.length > 0) && (
           <GlassCard>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Components */}
               {result.architecture_diagram?.components?.length > 0 && (
                 <div className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
                   <div className="flex items-center gap-1.5 mb-2">
@@ -286,7 +431,6 @@ const EnhancedDashboard = () => {
                 </div>
               )}
 
-              {/* Resources */}
               {result.resources?.length > 0 && (
                 <div className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
                   <div className="flex items-center gap-1.5 mb-2">
@@ -304,7 +448,6 @@ const EnhancedDashboard = () => {
                 </div>
               )}
 
-              {/* Data Flow */}
               {result.architecture_diagram?.connections?.length > 0 && (
                 <div className="p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
                   <div className="flex items-center gap-1.5 mb-2">
@@ -330,7 +473,28 @@ const EnhancedDashboard = () => {
         )}
 
         {/* File Hierarchy */}
-        {renderFileHierarchy()}
+        {result.file_hierarchy && (
+          <GlassCard>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FolderTree className="w-4 h-4 text-cyan-400" />
+                <h4 className="font-semibold text-slate-200 text-sm">Project Structure</h4>
+                <span className="px-1.5 py-0.5 bg-cyan-500/15 text-cyan-300 rounded-full text-[10px] font-medium">
+                  {result.files?.length || 0} files
+                </span>
+              </div>
+              <button onClick={handleCopyFileHierarchy}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-xs text-slate-400 hover:text-slate-200 transition-colors">
+                <Copy className="w-3 h-3" /><span>Copy</span>
+              </button>
+            </div>
+            <div className="p-3 bg-slate-950/50 rounded-xl border border-white/[0.04]">
+              <pre className="text-slate-300 font-mono text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto">
+                {result.file_hierarchy}
+              </pre>
+            </div>
+          </GlassCard>
+        )}
 
         {/* Generated Files + Download ZIP */}
         {result.files && result.files.length > 0 && (
@@ -354,7 +518,6 @@ const EnhancedDashboard = () => {
             <DynamicFileRenderer files={result.files} onCopy={handleCopyToClipboard} />
           </GlassCard>
         )}
-
       </div>
     );
   };
@@ -369,7 +532,7 @@ const EnhancedDashboard = () => {
           onKeyDown={handleKeyDown}
           className="w-full bg-transparent text-white placeholder-slate-500 px-5 pt-4 pb-14 rounded-2xl resize-none focus:outline-none text-sm leading-relaxed"
           rows={hasResults ? 2 : 4}
-          placeholder="Describe your cloud infrastructure... (e.g., 'Create a secure AWS VPC with subnets, ALB, EC2, and RDS')"
+          placeholder={messages.length > 0 ? "Refine or modify your infrastructure..." : "Describe your cloud infrastructure... (e.g., 'Create a secure AWS VPC with subnets, ALB, EC2, and RDS')"}
         />
         <div className="absolute bottom-0 left-0 right-0 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -383,7 +546,7 @@ const EnhancedDashboard = () => {
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-600">{description.length}/1000</span>
+            <span className="text-xs text-slate-600">{description.length}/3000</span>
             <button onClick={handleGenerate} disabled={!description.trim() || isGenerating}
               className="w-9 h-9 flex items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white shadow-lg shadow-emerald-500/20 transition-all duration-200 disabled:opacity-30 disabled:shadow-none disabled:cursor-not-allowed hover:scale-105">
               {isGenerating ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -395,7 +558,7 @@ const EnhancedDashboard = () => {
   );
 
   // ── Main Layout ─────────────────────────────────────────
-  const hasResults = result || isGenerating || isLoadingHistory;
+  const hasResults = result || isGenerating || isLoadingHistory || messages.length > 0;
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/50 to-slate-950 font-sans text-white flex flex-col">
@@ -406,16 +569,17 @@ const EnhancedDashboard = () => {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-emerald-600/5 rounded-full blur-3xl" />
       </div>
 
-      {/* Sidebar (logout moved here — see HistorySidebar) */}
+      {/* Sidebar */}
       <HistorySidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onSelect={handleSelectHistory}
         onNewChat={handleNewChat}
         onLogout={logout}
+        onContinue={handleContinueHistory}
       />
 
-      {/* Header — minimal, no logout (moved to sidebar) */}
+      {/* Header */}
       <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-white/[0.04] flex-shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={() => setIsSidebarOpen(true)}
@@ -464,9 +628,9 @@ const EnhancedDashboard = () => {
             </div>
           </div>
         ) : (
-          /* ── RESULTS STATE: Scrollable results + sticky bottom input ── */
+          /* ── RESULTS STATE: Chat thread + results + sticky bottom input ── */
           <>
-            {/* Scrollable results area */}
+            {/* Scrollable area */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
               <div className="max-w-4xl mx-auto space-y-4">
                 {isLoadingHistory && (
@@ -477,12 +641,19 @@ const EnhancedDashboard = () => {
                     </div>
                   </GlassCard>
                 )}
+
+                {/* Chat Messages */}
+                {renderChatMessages()}
+
+                {/* Generation progress */}
                 {renderGenerationProgress()}
-                {renderResults()}
+
+                {/* Active result panel (only when not in pure chat view or no messages) */}
+                {messages.length === 0 && renderActiveResult()}
               </div>
             </div>
 
-            {/* Sticky bottom input bar — z-index layering ensures it stays on top */}
+            {/* Sticky bottom input bar */}
             <div className="sticky bottom-0 z-30 px-6 py-4 border-t border-white/[0.06] bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent backdrop-blur-md">
               {renderInputBar()}
             </div>
@@ -491,6 +662,29 @@ const EnhancedDashboard = () => {
       </main>
 
       <UpgradeModal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} />
+    </div>
+  );
+};
+
+// ── Collapsible Results Component ─────────────────────────
+const CollapsibleResults = ({ result }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!result?.files?.length) return null;
+
+  return (
+    <div className="mt-2 ml-9">
+      <button onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.04] border border-white/[0.06] rounded-lg text-xs text-slate-400 hover:text-white hover:bg-white/[0.08] transition-all">
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        <FileText className="w-3 h-3" />
+        <span>View Generated Files ({result.files.length})</span>
+      </button>
+      {expanded && (
+        <div className="mt-3 space-y-2">
+          <DynamicFileRenderer files={result.files} onCopy={(text) => navigator.clipboard.writeText(text)} />
+        </div>
+      )}
     </div>
   );
 };

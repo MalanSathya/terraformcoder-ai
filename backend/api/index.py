@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timedelta
 import hashlib
+import secrets
 import base64
 import os
 import json
@@ -121,10 +122,16 @@ class MultiCloudCode(BaseModel):
     azure: Optional[str] = None
     gcp: Optional[str] = None
 
+class ConversationMessage(BaseModel):
+    role: str
+    content: str
+
 class GenerateRequest(BaseModel):
-    description: str = Field(..., min_length=10, max_length=1000)
+    description: str = Field(..., min_length=10, max_length=3000)
     provider: str = "aws"
     include_diagram: bool = True
+    conversation_history: List[ConversationMessage] = []
+    parent_generation_id: Optional[str] = None
 
 class GenerateResponse(BaseModel):
     id: Optional[str] = None
@@ -541,8 +548,8 @@ def is_valid_infrastructure_request(description: str) -> bool:
     return is_valid
 
 # --- AI Model Call (Enhanced) ---
-async def call_ai_model(description: str, provider: str, include_diagram: bool = True):
-    """Enhanced AI model call with dynamic file processing"""
+async def call_ai_model(description: str, provider: str, include_diagram: bool = True, conversation_history: List[dict] = []):
+    """Enhanced AI model call with dynamic file processing and multi-turn conversation support"""
     
     if not is_valid_infrastructure_request(description):
         return {
@@ -555,9 +562,9 @@ async def call_ai_model(description: str, provider: str, include_diagram: bool =
             "architecture_diagram": None
         }
     
-    # Check cache
+    # Only use cache for single-turn (no conversation history)
     cache_key = hashlib.sha256(f"{description}-{provider}".encode()).hexdigest()
-    if cache_key in response_cache:
+    if not conversation_history and cache_key in response_cache:
         cached_data = response_cache[cache_key]
         cached_data["cached_response"] = True
         return cached_data
@@ -656,27 +663,32 @@ Optionally include additional files as needed:
     user_message = f"Generate Terraform code for {provider} to {description}."
 
     try:
+        # Build messages dynamically with conversation history support
         if use_new_api:
-            messages = [
-                ChatMessage(role="system", content=system_prompt),
-                ChatMessage(role="user", content=user_message)
-            ]
+            messages = [ChatMessage(role="system", content=system_prompt)]
+            # Append conversation history (multi-turn)
+            for msg in conversation_history:
+                messages.append(ChatMessage(role=msg.get("role", "user"), content=msg.get("content", "")))
+            # Append current user message
+            messages.append(ChatMessage(role="user", content=user_message))
             response = mistral_client.chat(
                 model=MISTRAL_MODEL,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=2048
+                max_tokens=3500
             )
         else:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ]
+            messages = [{"role": "system", "content": system_prompt}]
+            # Append conversation history (multi-turn)
+            for msg in conversation_history:
+                messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+            # Append current user message
+            messages.append({"role": "user", "content": user_message})
             response = mistral_client.chat.complete(
                 model=MISTRAL_MODEL,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=2048
+                max_tokens=3500
             )
         
         content = response.choices[0].message.content.strip()
@@ -817,7 +829,7 @@ async def increment_usage(user_id: str):
     except Exception as e:
         print(f"Error incrementing usage: {e}")
 
-async def save_generation(user_id: str, request: GenerateRequest, response: GenerateResponse):
+async def save_generation(user_id: str, request: GenerateRequest, response: GenerateResponse, parent_id: str = None, org_id: str = None):
     """Save a generation to the database."""
     try:
         # Convert files list to JSON string for the 'code' column (matches DB schema)
@@ -835,6 +847,12 @@ async def save_generation(user_id: str, request: GenerateRequest, response: Gene
             "file_hierarchy": response.file_hierarchy or "",
             "architecture_diagram": response.architecture_diagram.dict() if response.architecture_diagram else None,
         }
+        # Add optional parent_id for conversation threading
+        if parent_id:
+            generation_data["parent_id"] = parent_id
+        # Add optional org_id for team workspaces
+        if org_id:
+            generation_data["org_id"] = org_id
         print(f"Saving generation for user {user_id}...")
         result = supabase.table("generations").insert(generation_data).execute()
         print(f"Generation saved successfully: {result.data[0]['id'] if result.data else 'no data'}")
@@ -899,9 +917,19 @@ async def register(request: RegisterRequest):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists.")
 
     # 1. Create the user in Supabase Auth
-    response = await create_user(request.email, request.name, request.password)
-    if not response or not response.user:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create auth user.")
+    try:
+        response = supabase.auth.sign_up({
+            "email": request.email.lower(),
+            "password": request.password,
+            "options": {
+                "data": {"name": request.name}
+            }
+        })
+        if not response or not response.user:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create auth user.")
+    except Exception as e:
+        print(f"Error creating auth user: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     auth_user = response.user
     print(f"Auth user for {request.email} created successfully.")
@@ -978,7 +1006,10 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
             raise HTTPException(status_code=429, detail="Monthly generation limit reached. Upgrade to Pro for unlimited generations.")
         print("Quota OK, calling AI model...")
 
-        result = await call_ai_model(request.description, request.provider, request.include_diagram)
+        # Build conversation history for multi-turn
+        conv_history = [msg.dict() for msg in request.conversation_history] if request.conversation_history else []
+
+        result = await call_ai_model(request.description, request.provider, request.include_diagram, conversation_history=conv_history)
         print(f"AI model returned {len(result.get('files', []))} files")
         
         # Build the response object without the ID first
@@ -996,8 +1027,20 @@ async def generate(request: GenerateRequest, current_user: Dict = Depends(get_cu
         )
         print("Response object built, saving to DB...")
         
+        # Determine parent_id for conversation threading
+        parent_id = request.parent_generation_id if request.parent_generation_id else None
+
+        # Determine org_id for team workspaces
+        org_id = None
+        try:
+            membership = supabase.table("org_members").select("org_id").eq("user_id", current_user["id"]).limit(1).execute()
+            if membership.data:
+                org_id = membership.data[0]["org_id"]
+        except Exception:
+            pass  # org_members table may not exist yet
+
         # Save the generation to Supabase
-        saved_generation = await save_generation(current_user["id"], request, response_obj)
+        saved_generation = await save_generation(current_user["id"], request, response_obj, parent_id=parent_id, org_id=org_id)
         
         # Increment usage count after successful generation
         await increment_usage(current_user["id"])
@@ -1147,6 +1190,316 @@ async def download_generation_zip(generation_id: str, current_user: Dict = Depen
     except Exception as e:
         print(f"Error creating ZIP for generation {generation_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create ZIP file: {str(e)}")
+
+# --- Feature 1: Shareable Generation Links ---
+
+@app.post("/api/generations/{generation_id}/share")
+async def toggle_share_generation(generation_id: str, current_user: Dict = Depends(get_current_user)):
+    """Toggle sharing for a generation. Only the owner can share/unshare."""
+    try:
+        # Verify ownership
+        gen_result = supabase.table("generations") \
+            .select("id, is_public, slug") \
+            .eq("id", generation_id) \
+            .eq("user_id", current_user["id"]) \
+            .execute()
+
+        if not gen_result.data:
+            raise HTTPException(status_code=404, detail="Generation not found or access denied.")
+
+        gen = gen_result.data[0]
+
+        if gen.get("is_public"):
+            # Unshare: set is_public=False, slug=None
+            supabase.table("generations").update({
+                "is_public": False,
+                "slug": None
+            }).eq("id", generation_id).execute()
+            return {"shared": False}
+        else:
+            # Share: generate slug, set is_public=True
+            slug = secrets.token_urlsafe(10)
+            supabase.table("generations").update({
+                "is_public": True,
+                "slug": slug
+            }).eq("id", generation_id).execute()
+            return {
+                "shared": True,
+                "slug": slug,
+                "url": f"https://terraformcoder-ai.vercel.app/share/{slug}"
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error toggling share for {generation_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to toggle share: {str(e)}")
+
+@app.get("/api/share/{slug}")
+async def get_shared_generation(slug: str):
+    """Get a publicly shared generation by slug — NO authentication required."""
+    try:
+        response = supabase.table("generations") \
+            .select("id, files, explanation, architecture_diagram, provider, description, created_at, resources, estimated_cost, file_hierarchy") \
+            .eq("slug", slug) \
+            .eq("is_public", True) \
+            .execute()
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Shared generation not found.")
+
+        data = response.data[0]
+
+        # Process architecture_diagram from dict if present
+        architecture_diagram = None
+        if data.get("architecture_diagram"):
+            architecture_diagram = data["architecture_diagram"]
+
+        # Process files
+        files = data.get("files", [])
+
+        return {
+            "id": data["id"],
+            "files": files,
+            "explanation": data.get("explanation", ""),
+            "architecture_diagram": architecture_diagram,
+            "provider": data.get("provider", "aws"),
+            "description": data.get("description", ""),
+            "created_at": data.get("created_at", ""),
+            "resources": data.get("resources", []),
+            "estimated_cost": data.get("estimated_cost", "Unknown"),
+            "file_hierarchy": data.get("file_hierarchy", ""),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching shared generation {slug}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch shared generation.")
+
+# --- Feature 3: Team Workspaces ---
+
+class CreateOrgRequest(BaseModel):
+    name: str
+    slug: str
+
+class InviteRequest(BaseModel):
+    email: str
+    role: str = "viewer"
+
+@app.post("/api/orgs")
+async def create_org(request: CreateOrgRequest, current_user: Dict = Depends(get_current_user)):
+    """Create a new organization and add the creator as admin."""
+    try:
+        # Create the org
+        org_result = supabase.table("organizations").insert({
+            "name": request.name,
+            "slug": request.slug,
+            "owner_id": current_user["id"],
+        }).execute()
+
+        if not org_result.data:
+            raise HTTPException(status_code=500, detail="Failed to create organization.")
+
+        org = org_result.data[0]
+
+        # Auto-add creator as admin member
+        supabase.table("org_members").insert({
+            "org_id": org["id"],
+            "user_id": current_user["id"],
+            "role": "admin",
+        }).execute()
+
+        return org
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating org: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create organization: {str(e)}")
+
+@app.get("/api/orgs/me")
+async def get_my_orgs(current_user: Dict = Depends(get_current_user)):
+    """Return organizations the current user belongs to, with their role."""
+    try:
+        members = supabase.table("org_members") \
+            .select("org_id, role, organizations(id, name, slug, owner_id, plan, created_at)") \
+            .eq("user_id", current_user["id"]) \
+            .execute()
+
+        results = []
+        for m in members.data:
+            org = m.get("organizations", {})
+            results.append({
+                "org_id": m["org_id"],
+                "role": m["role"],
+                "name": org.get("name", ""),
+                "slug": org.get("slug", ""),
+                "owner_id": org.get("owner_id", ""),
+                "plan": org.get("plan", "team"),
+                "created_at": org.get("created_at", ""),
+            })
+        return results
+    except Exception as e:
+        print(f"Error fetching user orgs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch organizations.")
+
+@app.post("/api/orgs/{org_id}/invite")
+async def invite_to_org(org_id: str, request: InviteRequest, current_user: Dict = Depends(get_current_user)):
+    """Invite a user to an org. Only admins can invite."""
+    try:
+        # Verify caller is admin
+        membership = supabase.table("org_members") \
+            .select("role") \
+            .eq("org_id", org_id) \
+            .eq("user_id", current_user["id"]) \
+            .execute()
+
+        if not membership.data or membership.data[0]["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only admins can invite members.")
+
+        # Generate invite token with 7-day expiry
+        token = secrets.token_urlsafe(32)
+        expires_at = (datetime.utcnow() + timedelta(days=7)).isoformat()
+
+        supabase.table("invites").insert({
+            "org_id": org_id,
+            "email": request.email.lower(),
+            "role": request.role,
+            "token": token,
+            "expires_at": expires_at,
+        }).execute()
+
+        accept_url = f"https://terraformcoder-ai.vercel.app/accept-invite/{token}"
+
+        return {
+            "token": token,
+            "accept_url": accept_url,
+            "expires_at": expires_at,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating invite: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create invite: {str(e)}")
+
+@app.get("/api/orgs/accept-invite/{token}")
+async def accept_invite(token: str, current_user: Dict = Depends(get_current_user)):
+    """Accept an org invite. The invite token must be valid and not expired."""
+    try:
+        invite_result = supabase.table("invites") \
+            .select("*") \
+            .eq("token", token) \
+            .is_("accepted_at", "null") \
+            .execute()
+
+        if not invite_result.data:
+            raise HTTPException(status_code=404, detail="Invite not found or already accepted.")
+
+        invite = invite_result.data[0]
+
+        # Check expiry
+        expires_at = datetime.fromisoformat(invite["expires_at"].replace("Z", "+00:00"))
+        if datetime.utcnow().replace(tzinfo=expires_at.tzinfo) > expires_at:
+            raise HTTPException(status_code=400, detail="Invite has expired.")
+
+        # Upsert member
+        supabase.table("org_members").upsert({
+            "org_id": invite["org_id"],
+            "user_id": current_user["id"],
+            "role": invite["role"],
+            "invited_by": None,  # Could track the inviter if needed
+        }).execute()
+
+        # Mark invite as accepted
+        supabase.table("invites").update({
+            "accepted_at": datetime.utcnow().isoformat()
+        }).eq("id", invite["id"]).execute()
+
+        # Fetch org details to return
+        org_result = supabase.table("organizations") \
+            .select("*") \
+            .eq("id", invite["org_id"]) \
+            .execute()
+
+        return {
+            "message": "Invite accepted successfully",
+            "org": org_result.data[0] if org_result.data else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error accepting invite: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to accept invite: {str(e)}")
+
+@app.get("/api/orgs/{org_id}/members")
+async def get_org_members(org_id: str, current_user: Dict = Depends(get_current_user)):
+    """Return all members of an organization with their roles."""
+    try:
+        # Verify caller is a member
+        membership = supabase.table("org_members") \
+            .select("role") \
+            .eq("org_id", org_id) \
+            .eq("user_id", current_user["id"]) \
+            .execute()
+
+        if not membership.data:
+            raise HTTPException(status_code=403, detail="Not a member of this organization.")
+
+        # Get all members
+        members_result = supabase.table("org_members") \
+            .select("user_id, role, joined_at") \
+            .eq("org_id", org_id) \
+            .execute()
+
+        # Enrich with user email from auth (using admin client)
+        enriched = []
+        for member in members_result.data:
+            try:
+                user = supabase.auth.admin.get_user_by_id(member["user_id"])
+                email = user.user.email if user and user.user else "unknown"
+                name = (user.user.user_metadata or {}).get("name", "") if user and user.user else ""
+            except Exception:
+                email = "unknown"
+                name = ""
+            enriched.append({
+                "user_id": member["user_id"],
+                "role": member["role"],
+                "joined_at": member["joined_at"],
+                "email": email,
+                "name": name,
+            })
+
+        return enriched
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching org members: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch organization members.")
+
+@app.get("/api/history/team")
+async def get_team_history(org_id: str, limit: int = 20, offset: int = 0, current_user: Dict = Depends(get_current_user)):
+    """Get generation history for a team/org."""
+    try:
+        # Verify membership
+        membership = supabase.table("org_members") \
+            .select("role") \
+            .eq("org_id", org_id) \
+            .eq("user_id", current_user["id"]) \
+            .execute()
+
+        if not membership.data:
+            raise HTTPException(status_code=403, detail="Not a member of this organization.")
+
+        response = supabase.table("generations") \
+            .select("id, description, provider, estimated_cost, created_at") \
+            .eq("org_id", org_id) \
+            .order("created_at", desc=True) \
+            .range(offset, offset + limit - 1) \
+            .execute()
+        return response.data
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching team history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch team history.")
 
 @app.post("/api/billing/checkout")
 async def create_checkout_session(current_user: Dict = Depends(get_current_user)):

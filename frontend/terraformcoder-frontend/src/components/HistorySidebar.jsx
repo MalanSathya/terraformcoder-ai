@@ -1,21 +1,50 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, X, Plus, LogOut } from 'lucide-react';
-import { getGenerationHistory } from '../services/api';
+import { Clock, X, Plus, LogOut, Play, Users, User, Building2 } from 'lucide-react';
+import { getGenerationHistory, getMyOrgs, getTeamHistory } from '../services/api';
+import { Link } from 'react-router-dom';
 
-const HistorySidebar = ({ isOpen, onClose, onSelect, onNewChat, onLogout }) => {
+const HistorySidebar = ({ isOpen, onClose, onSelect, onNewChat, onLogout, onContinue }) => {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Team toggle state
+    const [viewMode, setViewMode] = useState('my'); // 'my' | 'team'
+    const [orgs, setOrgs] = useState([]);
+    const [hasOrg, setHasOrg] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchHistory();
+            fetchOrgs();
+        }
+    }, [isOpen]);
+
     useEffect(() => {
         if (isOpen) fetchHistory();
-    }, [isOpen]);
+    }, [viewMode]);
+
+    const fetchOrgs = async () => {
+        try {
+            const res = await getMyOrgs();
+            setOrgs(res.data);
+            setHasOrg(res.data.length > 0);
+        } catch (err) {
+            // Org tables might not exist yet
+            setHasOrg(false);
+        }
+    };
 
     const fetchHistory = async () => {
         try {
             setLoading(true);
-            const res = await getGenerationHistory(20);
-            setHistory(res.data);
+            if (viewMode === 'team' && orgs.length > 0) {
+                const res = await getTeamHistory(orgs[0].org_id, 20);
+                setHistory(res.data);
+            } else {
+                const res = await getGenerationHistory(20);
+                setHistory(res.data);
+            }
         } catch (err) {
             console.error('Failed to fetch history:', err);
             setError('Failed to load history');
@@ -86,6 +115,24 @@ const HistorySidebar = ({ isOpen, onClose, onSelect, onNewChat, onLogout }) => {
                     </button>
                 </div>
 
+                {/* My / Team toggle */}
+                {hasOrg && (
+                    <div className="px-3 pb-2">
+                        <div className="flex gap-1 p-1 bg-white/[0.03] rounded-lg border border-white/[0.06]">
+                            <button onClick={() => setViewMode('my')}
+                                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'my' ? 'bg-white/[0.08] text-white' : 'text-slate-500 hover:text-slate-300'
+                                    }`}>
+                                <User className="w-3 h-3" /> My
+                            </button>
+                            <button onClick={() => setViewMode('team')}
+                                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'team' ? 'bg-white/[0.08] text-white' : 'text-slate-500 hover:text-slate-300'
+                                    }`}>
+                                <Users className="w-3 h-3" /> Team
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* History List */}
                 <div className="flex-1 overflow-y-auto px-3 pb-2">
                     {loading ? (
@@ -109,33 +156,50 @@ const HistorySidebar = ({ isOpen, onClose, onSelect, onNewChat, onLogout }) => {
                     ) : (
                         <div className="space-y-1 mt-1">
                             {history.map((item) => (
-                                <button key={item.id}
-                                    onClick={() => { onSelect(item.id); onClose(); }}
-                                    className="w-full text-left p-3 rounded-xl hover:bg-white/[0.06] transition-all duration-150 group">
-                                    <div className="text-sm text-slate-300 group-hover:text-white line-clamp-2 leading-relaxed">
-                                        {truncateText(item.description)}
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-2">
-                                        <span className={`text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded ${getProviderBadge(item.provider)}`}>
-                                            {item.provider}
-                                        </span>
-                                        <span className="text-[10px] text-slate-500">{getRelativeTime(item.created_at)}</span>
-                                    </div>
-                                </button>
+                                <div key={item.id} className="group w-full text-left p-3 rounded-xl hover:bg-white/[0.06] transition-all duration-150">
+                                    <button
+                                        onClick={() => { onSelect(item.id); onClose(); }}
+                                        className="w-full text-left">
+                                        <div className="text-sm text-slate-300 group-hover:text-white line-clamp-2 leading-relaxed">
+                                            {truncateText(item.description)}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <span className={`text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded ${getProviderBadge(item.provider)}`}>
+                                                {item.provider}
+                                            </span>
+                                            <span className="text-[10px] text-slate-500">{getRelativeTime(item.created_at)}</span>
+                                        </div>
+                                    </button>
+                                    {/* Continue this button */}
+                                    {onContinue && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onContinue(item.id); onClose(); }}
+                                            className="mt-2 flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] hover:bg-emerald-500/15 text-[10px] text-slate-500 hover:text-emerald-300 transition-all opacity-0 group-hover:opacity-100">
+                                            <Play className="w-2.5 h-2.5" />
+                                            <span>Continue this</span>
+                                        </button>
+                                    )}
+                                </div>
                             ))}
                         </div>
                     )}
                 </div>
 
-                {/* Logout at bottom */}
-                {onLogout && (
-                    <div className="p-3 border-t border-white/[0.06]">
+                {/* Bottom section: Team settings + Logout */}
+                <div className="p-3 border-t border-white/[0.06] space-y-1">
+                    {hasOrg && (
+                        <Link to="/settings/org" onClick={onClose}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-slate-400 hover:bg-white/[0.06] hover:text-white transition-all text-sm font-medium">
+                            <Building2 className="w-4 h-4" /><span>Team Settings</span>
+                        </Link>
+                    )}
+                    {onLogout && (
                         <button onClick={onLogout}
                             className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all text-sm font-medium">
                             <LogOut className="w-4 h-4" /><span>Logout</span>
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         </>
     );
