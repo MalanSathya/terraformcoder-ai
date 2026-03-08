@@ -281,14 +281,14 @@ const EnhancedDashboard = () => {
               {/* Message bubble */}
               <div className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user'
-                    ? 'bg-gradient-to-br from-emerald-400 to-cyan-400'
-                    : 'bg-gradient-to-br from-purple-400 to-violet-500'
+                  ? 'bg-gradient-to-br from-emerald-400 to-cyan-400'
+                  : 'bg-gradient-to-br from-purple-400 to-violet-500'
                   }`}>
                   {msg.role === 'user' ? <User className="w-3.5 h-3.5 text-white" /> : <Bot className="w-3.5 h-3.5 text-white" />}
                 </div>
                 <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${msg.role === 'user'
-                    ? 'bg-emerald-500/15 border border-emerald-500/25 text-emerald-100 rounded-br-md'
-                    : 'bg-white/[0.04] border border-white/[0.08] text-slate-300 rounded-bl-md'
+                  ? 'bg-emerald-500/15 border border-emerald-500/25 text-emerald-100 rounded-br-md'
+                  : 'bg-white/[0.04] border border-white/[0.08] text-slate-300 rounded-bl-md'
                   }`}>
                   {msg.content}
                 </div>
@@ -351,8 +351,8 @@ const EnhancedDashboard = () => {
             {result.id && (
               <button onClick={handleShare} disabled={isSharing}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all disabled:opacity-50 ${isShared
-                    ? 'bg-blue-500/15 border-blue-500/25 text-blue-300 hover:bg-blue-500/25'
-                    : 'bg-white/[0.04] border-white/[0.08] text-slate-400 hover:text-white hover:bg-white/[0.08]'
+                  ? 'bg-blue-500/15 border-blue-500/25 text-blue-300 hover:bg-blue-500/25'
+                  : 'bg-white/[0.04] border-white/[0.08] text-slate-400 hover:text-white hover:bg-white/[0.08]'
                   }`}>
                 {isSharing ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
                 <span>{isShared ? 'Unshare' : 'Share'}</span>
@@ -648,8 +648,8 @@ const EnhancedDashboard = () => {
                 {/* Generation progress */}
                 {renderGenerationProgress()}
 
-                {/* Active result panel (only when not in pure chat view or no messages) */}
-                {messages.length === 0 && renderActiveResult()}
+                {/* Active result panel (always show for latest result) */}
+                {renderActiveResult()}
               </div>
             </div>
 
