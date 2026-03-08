@@ -1082,6 +1082,33 @@ async def get_history(limit: int = 20, offset: int = 0, current_user: Dict = Dep
         print(f"Error fetching history: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch generation history.")
 
+@app.get("/api/history/team")
+async def get_team_history(org_id: str, limit: int = 20, offset: int = 0, current_user: Dict = Depends(get_current_user)):
+    """Get generation history for a team/org."""
+    try:
+        # Verify membership
+        membership = supabase.table("org_members") \
+            .select("role") \
+            .eq("org_id", org_id) \
+            .eq("user_id", current_user["id"]) \
+            .execute()
+
+        if not membership.data:
+            raise HTTPException(status_code=403, detail="Not a member of this organization.")
+
+        response = supabase.table("generations") \
+            .select("id, description, provider, estimated_cost, created_at") \
+            .eq("org_id", org_id) \
+            .order("created_at", desc=True) \
+            .range(offset, offset + limit - 1) \
+            .execute()
+        return response.data
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching team history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch team history.")
+
 @app.get("/api/history/{generation_id}", response_model=GenerateResponse)
 async def get_generation_by_id(generation_id: str, current_user: Dict = Depends(get_current_user)):
     try:
@@ -1473,33 +1500,6 @@ async def get_org_members(org_id: str, current_user: Dict = Depends(get_current_
     except Exception as e:
         print(f"Error fetching org members: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch organization members.")
-
-@app.get("/api/history/team")
-async def get_team_history(org_id: str, limit: int = 20, offset: int = 0, current_user: Dict = Depends(get_current_user)):
-    """Get generation history for a team/org."""
-    try:
-        # Verify membership
-        membership = supabase.table("org_members") \
-            .select("role") \
-            .eq("org_id", org_id) \
-            .eq("user_id", current_user["id"]) \
-            .execute()
-
-        if not membership.data:
-            raise HTTPException(status_code=403, detail="Not a member of this organization.")
-
-        response = supabase.table("generations") \
-            .select("id, description, provider, estimated_cost, created_at") \
-            .eq("org_id", org_id) \
-            .order("created_at", desc=True) \
-            .range(offset, offset + limit - 1) \
-            .execute()
-        return response.data
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error fetching team history: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch team history.")
 
 @app.post("/api/billing/checkout")
 async def create_checkout_session(current_user: Dict = Depends(get_current_user)):

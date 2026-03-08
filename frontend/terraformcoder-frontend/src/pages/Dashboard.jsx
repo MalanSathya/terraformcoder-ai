@@ -508,7 +508,7 @@ const EnhancedDashboard = () => {
   // ── Input Bar ───────────────────────────────────────────
   const renderInputBar = () => (
     <div className="w-full max-w-3xl mx-auto">
-      <div className="relative bg-transparent transition-all duration-300">
+      <div className="relative bg-white/[0.04] border border-white/[0.08] rounded-2xl backdrop-blur-xl shadow-2xl transition-all duration-300 focus-within:border-emerald-500/30 focus-within:shadow-emerald-500/5">
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -637,10 +637,8 @@ const EnhancedDashboard = () => {
             </div>
 
             {/* Sticky bottom input bar */}
-            <div className="sticky bottom-0 z-30 px-6 py-4 bg-transparent pt-10 pb-8 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pointer-events-none">
-              <div className="pointer-events-auto">
-                {renderInputBar()}
-              </div>
+            <div className="sticky bottom-0 z-30 px-6 py-4 border-t border-white/[0.06] bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent backdrop-blur-md">
+              {renderInputBar()}
             </div>
           </>
         )}
