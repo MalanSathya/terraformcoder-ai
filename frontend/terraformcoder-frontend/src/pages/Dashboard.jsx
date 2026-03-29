@@ -625,8 +625,73 @@ const EnhancedDashboard = () => {
                   </GlassCard>
                 )}
 
+<<<<<<< HEAD
+          <div className="space-y-6">
+             <div className="relative">
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full p-4 rounded-xl bg-slate-800/50 backdrop-blur-sm text-.jsx' to its original state by removing the theme toggle button and dark mode classes.white border border-slate-700/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all duration-300 placeholder-slate-400 resize-none font-mono"
+                  rows={5}
+                  placeholder="e.g., 'Create a secure AWS VPC with public and private subnets, load balancer, EC2 instances, and RDS database with automated backup and monitoring.'"
+                />
+                <div className="absolute bottom-3 right-3 flex items-center space-x-2">
+                  <span className="text-xs text-slate-500">
+                    {description.length}/1000
+                  </span>
+                  {description.length > 0 && (
+                    <div className={`w-2 h-2 rounded-full ${description.length > 900 ? 'bg-red-400' : description.length > 700 ? 'bg-yellow-400' : 'bg-green-400'}`}></div>
+                  )}
+                </div>
+             </div>
+             
+             <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center space-x-4">
+                  <ProviderSelector selectedProvider={provider} onProviderChange={setProvider} />
+                  
+                  {/* Diagram Toggle */}
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="include-diagram"
+                      checked={includeDiagram}
+                      onChange={(e) => setIncludeDiagram(e.target.checked)}
+                      className="w-4 h-4 text-emerald-600 bg-slate-700 border-slate-600 rounded focus:ring-emerald-500 focus:ring-2"
+                    />
+                    <label htmlFor="include-diagram" className="text-slate-300 text-sm flex items-center space-x-1">
+                      <Eye className="w-3 h-3" />
+                      <span>Generate Diagram</span>
+                    </label>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={handleGenerate}
+                  disabled={!description.trim() || isGenerating}
+                  className="group relative w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-emerald-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105"
+                >
+                  <span className="flex items-center justify-center space-x-3">
+                    {isGenerating ? (
+                      <>
+                        <Loader className="animate-spin w-5 h-5" />
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Rocket className="w-5 h-5" />
+                        <span>Generate Infrastructure</span>
+                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                      </>
+                    )}
+                  </span>
+                </button>
+             </div>
+          </div>
+        </GlassCard>
+=======
                 {/* Chat Messages */}
                 {renderChatMessages()}
+>>>>>>> main
 
                 {/* Generation progress */}
                 {renderGenerationProgress()}

@@ -38,6 +38,8 @@ load_dotenv()
 # --- FastAPI App ---
 app = FastAPI(title="TerraformCoder AI API")
 
+<<<<<<< HEAD
+=======
 # --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
@@ -61,6 +63,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+>>>>>>> main
 
 
 # --- Security ---
